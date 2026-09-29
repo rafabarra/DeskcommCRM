@@ -12725,6 +12725,36 @@ export const DICIONARIO: Traducoes = {
   },
   "Erro ao carregar a previsão.": { es: "Error al cargar la previsión." },
   "Falha ao calcular a previsão do funil.": { es: "No se pudo calcular la previsión del embudo." },
+
+  // ─── Continuação manual na conexão pessoal (Fase 2A) ───
+  "Continuar na conexão pessoal": { es: "Continuar en la conexión personal" },
+  "Preparando conexão...": { es: "Preparando conexión..." },
+  "Continuar na conexão pessoal?": { es: "¿Continuar en la conexión personal?" },
+  "O atendimento do cliente continuará em outro número, em uma segunda conversa da mesma demanda. Nenhuma mensagem será enviada agora.": {
+    es: "La atención del cliente continuará en otro número, en una segunda conversación de la misma demanda. No se enviará ningún mensaje ahora.",
+  },
+  "Conversa pronta na conexão pessoal. Nenhuma mensagem foi enviada.": {
+    es: "Conversación lista en la conexión personal. No se envió ningún mensaje.",
+  },
+  "Falha ao verificar a conexão pessoal.": {
+    es: "No se pudo verificar la conexión personal.",
+  },
+  "O destino é definido pela conexão pessoal do responsável.": {
+    es: "El destino lo define la conexión personal del responsable.",
+  },
+  "Idempotency-Key deve ser UUID": { es: "Idempotency-Key debe ser UUID" },
+  "Esta chave já foi usada para outra continuação.": {
+    es: "Esta clave ya se usó para otra continuación.",
+  },
+  "Você não pode continuar esta conversa.": {
+    es: "No puede continuar esta conversación.",
+  },
+  "A conversa da conexão pessoal já atende outra demanda aberta.": {
+    es: "La conversación de la conexión personal ya atiende otra demanda abierta.",
+  },
+  "Esta conversa não pode continuar na conexão pessoal agora.": {
+    es: "Esta conversación no puede continuar en la conexión personal ahora.",
+  },
 };
 
 /**

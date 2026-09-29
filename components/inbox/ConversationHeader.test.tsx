@@ -16,6 +16,8 @@ import type { ConversationWithContact } from "@/hooks/inbox/useConversationsReal
 const closeMutate = vi.hoisted(() => vi.fn());
 const arquivarMutate = vi.hoisted(() => vi.fn());
 const startCall = vi.hoisted(() => vi.fn());
+const channelHandoffMutate = vi.hoisted(() => vi.fn());
+const channelHandoffAvailability = vi.hoisted(() => ({ available: false }));
 
 vi.mock("@/hooks/auth/AuthProvider", () => ({
   useAuth: () => ({ user: { id: "u1", support: null } }),
@@ -36,6 +38,12 @@ vi.mock("@/hooks/inbox/useResumeAiAttendance", () => ({
 }));
 vi.mock("@/hooks/inbox/usePauseAiAttendance", () => ({
   usePauseAiAttendance: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+vi.mock("@/hooks/inbox/useManualChannelHandoff", () => ({
+  useManualChannelHandoff: () => ({
+    availability: { data: channelHandoffAvailability },
+    mutation: { mutate: channelHandoffMutate, isPending: false },
+  }),
 }));
 vi.mock("@/hooks/ai/useAutomaticoAtivo", () => ({
   useAutomaticoAtivo: () => ({ data: false }),
@@ -85,6 +93,43 @@ beforeEach(() => {
   closeMutate.mockReset();
   arquivarMutate.mockReset();
   startCall.mockReset();
+  channelHandoffMutate.mockReset();
+  channelHandoffAvailability.available = false;
+});
+
+describe("ConversationHeader — continuação na conexão pessoal", () => {
+  it("só executa depois da confirmação e abre a conversa de destino", async () => {
+    const user = userEvent.setup();
+    const abrir = vi.fn();
+    channelHandoffAvailability.available = true;
+    channelHandoffMutate.mockImplementation(
+      (
+        _args: undefined,
+        options: { onSuccess?: (result: { destination_conversation_id: string }) => void },
+      ) => options.onSuccess?.({ destination_conversation_id: "conv-destino" }),
+    );
+
+    render(<ConversationHeader conversation={conversa("claimed")} onAbrirConversa={abrir} />);
+
+    await user.click(screen.getByRole("button", { name: "Continuar na conexão pessoal" }));
+    expect(channelHandoffMutate).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        "O atendimento do cliente continuará em outro número, em uma segunda conversa da mesma demanda. Nenhuma mensagem será enviada agora.",
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Abrir conversa" }));
+    expect(channelHandoffMutate).toHaveBeenCalledTimes(1);
+    expect(abrir).toHaveBeenCalledWith("conv-destino");
+  });
+
+  it("não mostra a ação sem disponibilidade válida", () => {
+    render(<ConversationHeader conversation={conversa("claimed")} onAbrirConversa={vi.fn()} />);
+    expect(
+      screen.queryByRole("button", { name: "Continuar na conexão pessoal" }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe("ConversationHeader — chamada de voz na Inbox", () => {

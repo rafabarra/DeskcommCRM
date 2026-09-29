@@ -51,6 +51,11 @@ function loadCreds(): Creds {
 const creds = loadCreds();
 let personalBindingUserId: string | null = null;
 let personalChannelId: string | null = null;
+let sourceChannelId: string | null = null;
+let handoffContactId: string | null = null;
+let handoffDemandId: string | null = null;
+let handoffSourceId: string | null = null;
+let handoffDestinationId: string | null = null;
 
 async function login(page: Page, email: string): Promise<void> {
   await page.goto("/login");
@@ -82,6 +87,22 @@ test.describe("distribuição de atendimento — a tela que liga o rodízio e a 
       .single();
     if (error || !data) throw error ?? new Error("personal_channel_seed_failed");
     personalChannelId = data.id;
+
+    const source = await db
+      .from("channel_sessions")
+      .insert({
+        organization_id: creds.org_id,
+        waha_session_name: `handoff-source-${randomUUID()}`,
+        display_name: "Conexão principal E2E",
+        status: "STOPPED",
+        webhook_secret_encrypted: "\\x00",
+      })
+      .select("id")
+      .single();
+    if (source.error || !source.data) {
+      throw source.error ?? new Error("source_channel_seed_failed");
+    }
+    sourceChannelId = source.data.id;
   });
 
   test.afterAll(async ({ browser }) => {
@@ -104,8 +125,18 @@ test.describe("distribuição de atendimento — a tela que liga o rodízio e a 
       });
     }
     await page.close();
+    if (handoffDestinationId) {
+      await db.from("conversations").delete().eq("id", handoffDestinationId);
+    }
+    if (handoffSourceId) await db.from("conversations").delete().eq("id", handoffSourceId);
+    if (handoffDemandId) await db.from("demandas").delete().eq("id", handoffDemandId);
+    if (handoffContactId) await db.from("contacts").delete().eq("id", handoffContactId);
     if (personalChannelId) {
       const { error } = await db.from("channel_sessions").delete().eq("id", personalChannelId);
+      if (error) throw error;
+    }
+    if (sourceChannelId) {
+      const { error } = await db.from("channel_sessions").delete().eq("id", sourceChannelId);
       if (error) throw error;
     }
   });
@@ -203,6 +234,144 @@ test.describe("distribuição de atendimento — a tela que liga o rodízio e a 
     await page.reload();
     const persisted = page.getByTestId(`conexao-pessoal-${personalBindingUserId}`);
     await expect(persisted.getByLabel("Conexão pessoal")).toHaveValue(personalChannelId!);
+  });
+
+  test("manager continua a mesma demanda na conexão pessoal, sem enviar mensagem", async ({
+    page,
+  }) => {
+    expect(personalBindingUserId).not.toBeNull();
+    expect(personalChannelId).not.toBeNull();
+    expect(sourceChannelId).not.toBeNull();
+
+    const contact = await db
+      .from("contacts")
+      .insert({ organization_id: creds.org_id, display_name: "Contato handoff E2E" })
+      .select("id")
+      .single();
+    if (contact.error || !contact.data) throw contact.error ?? new Error("handoff_contact_seed");
+    handoffContactId = contact.data.id;
+
+    const demand = await db
+      .from("demandas")
+      .insert({
+        organization_id: creds.org_id,
+        contact_id: handoffContactId,
+        origem: "manual",
+        estado: "em_atendimento",
+        dono_kind: "humano",
+        dono_user_id: personalBindingUserId,
+        proximo_passo: "Continuar pela conexão pessoal",
+      })
+      .select("id")
+      .single();
+    if (demand.error || !demand.data) throw demand.error ?? new Error("handoff_demand_seed");
+    handoffDemandId = demand.data.id;
+
+    const source = await db
+      .from("conversations")
+      .insert({
+        organization_id: creds.org_id,
+        contact_id: handoffContactId,
+        channel_session_id: sourceChannelId,
+        status: "claimed",
+        assigned_to_user_id: personalBindingUserId,
+        assigned_to_user_name: "Responsável E2E",
+        assigned_at: new Date().toISOString(),
+        assignee_kind: "user",
+        bot_silenced_until: "infinity",
+        current_demanda_id: handoffDemandId,
+        service_revision: 1,
+        service_started_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (source.error || !source.data) throw source.error ?? new Error("handoff_source_seed");
+    handoffSourceId = source.data.id;
+    const link = await db.from("demanda_conversas").insert({
+      organization_id: creds.org_id,
+      demanda_id: handoffDemandId,
+      conversation_id: handoffSourceId,
+      service_revision: 1,
+    });
+    if (link.error) throw link.error;
+
+    await login(page, creds.users.manager!.email);
+    await page.goto(`/app/inbox?id=${handoffSourceId}&filter=all`);
+    const action = page.getByRole("button", { name: "Continuar na conexão pessoal" });
+    await expect(action).toBeVisible({ timeout: 30_000 });
+    await action.click();
+
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog).toContainText("continuará em outro número");
+    await expect(dialog).toContainText("Nenhuma mensagem será enviada agora");
+    await dialog.getByRole("button", { name: "Abrir conversa" }).click();
+
+    await expect(
+      page.getByText("Conversa pronta na conexão pessoal. Nenhuma mensagem foi enviada."),
+    ).toBeVisible();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("id"), { timeout: 30_000 })
+      .not.toBe(handoffSourceId);
+    handoffDestinationId = new URL(page.url()).searchParams.get("id");
+    expect(handoffDestinationId).not.toBeNull();
+
+    const [sourceAfter, destination, links, messages, receipt, audit] = await Promise.all([
+      db
+        .from("conversations")
+        .select("channel_session_id,contact_id,current_demanda_id,assigned_to_user_id,status")
+        .eq("id", handoffSourceId)
+        .single(),
+      db
+        .from("conversations")
+        .select("channel_session_id,contact_id,current_demanda_id,assigned_to_user_id,status")
+        .eq("id", handoffDestinationId!)
+        .single(),
+      db
+        .from("demanda_conversas")
+        .select("conversation_id", { count: "exact" })
+        .eq("demanda_id", handoffDemandId!),
+      db
+        .from("messages")
+        .select("id", { count: "exact" })
+        .eq("conversation_id", handoffDestinationId!),
+      db
+        .from("channel_handoffs")
+        .select("status,destination_conversation_id,assigned_user_id")
+        .eq("source_conversation_id", handoffSourceId)
+        .single(),
+      db
+        .from("api_audit_log")
+        .select("action")
+        .eq("organization_id", creds.org_id)
+        .eq("resource_id", handoffSourceId)
+        .eq("action", "conversation.channel_handoff_completed")
+        .limit(1),
+    ]);
+    for (const result of [sourceAfter, destination, links, messages, receipt, audit]) {
+      if (result.error) throw result.error;
+    }
+    expect(sourceAfter.data).toMatchObject({
+      channel_session_id: sourceChannelId,
+      contact_id: handoffContactId,
+      current_demanda_id: handoffDemandId,
+      assigned_to_user_id: personalBindingUserId,
+      status: "claimed",
+    });
+    expect(destination.data).toMatchObject({
+      channel_session_id: personalChannelId,
+      contact_id: handoffContactId,
+      current_demanda_id: handoffDemandId,
+      assigned_to_user_id: personalBindingUserId,
+      status: "claimed",
+    });
+    expect(links.count).toBe(2);
+    expect(messages.count).toBe(0);
+    expect(receipt.data).toMatchObject({
+      status: "completed",
+      destination_conversation_id: handoffDestinationId,
+      assigned_user_id: personalBindingUserId,
+    });
+    expect(audit.data).toHaveLength(1);
   });
 
   test("atendente não abre a tela nem consegue gravar pela API", async ({ page }) => {

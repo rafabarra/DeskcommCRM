@@ -112,6 +112,8 @@ export const AUDIT_ACTIONS = [
   "conversation.created",
   "conversation.claimed",
   "conversation.transferred",
+  "conversation.channel_handoff_completed",
+  "conversation.channel_handoff_failed",
   "conversation.released",
   "conversation.closed",
   // O arquivamento é terminal como o fechamento, e o evento é separado de
