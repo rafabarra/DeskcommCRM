@@ -3090,3 +3090,21 @@ atendimento; ausência de vínculo preserva o comportamento anterior.
 
 **NÃO coberto nesta fase:** qualquer handoff, troca de canal, envio por conexão pessoal ou consumo
 do vínculo pelo motor. Esses comportamentos pertencem à fase seguinte e não foram ligados.
+
+## J36 — Continuar manualmente na conexão pessoal `[P1]` (2026-09-29)
+
+Fase 2A da continuação entre canais. A ação parte da conversa atual, resolve no servidor o vínculo
+`personal_handoff` do responsável e abre ou reutiliza outra conversa real do mesmo contato. As duas
+conversas ficam ligadas à mesma demanda; nenhuma mensagem é copiada ou enviada.
+
+| Caso  | Esperado                                                                                  | Cobertura                                        |
+| ----- | ----------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| J36.1 | A ação só aparece com responsável humano, vínculo válido e conexão diferente              | Componente do cabeçalho + GET de disponibilidade |
+| J36.2 | A confirmação diz que outra conversa será aberta e que nenhuma mensagem sai               | Componente + E2E do Inbox                        |
+| J36.3 | Confirmar abre o destino com mesmo contato, demanda e responsável, preservando a origem   | E2E + `manual-channel-handoffs.test.ts`          |
+| J36.4 | Clique duplo/retry com a mesma chave cria um só recibo e um só efeito                     | Invariante concorrente de banco                  |
+| J36.5 | Agent não opera conversa alheia; manager/admin podem intervir; outro tenant não atravessa | API + invariantes de banco                       |
+| J36.6 | Destino já ligado a outra demanda aberta é recusado sem alterar nenhuma conversa          | Invariante de banco                              |
+
+**NÃO coberto nesta fase:** timeline agregada, alternância jornada/conversa, primeira mensagem
+automática, regra pós-triagem, automação de handoff ou mudança de capacidade/round-robin.

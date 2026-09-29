@@ -99,6 +99,7 @@ export type ActivityType =
    */
   | "conversation_claimed"
   | "conversation_transferred"
+  | "conversation_channel_handoff"
   | "conversation_released"
   | "conversation_ai_paused"
   /**
@@ -251,6 +252,7 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   // essa régua ("Retorno agendado", "Demanda encerrada").
   conversation_claimed: "Assumiu a conversa",
   conversation_transferred: "Transferiu a conversa",
+  conversation_channel_handoff: "Continuou em outra conexão",
   conversation_released: "Liberou a conversa",
   // "automático" e não "IA": a palavra do estado já é contrato em quatro
   // arquivos e o controle NEGATIVO de `handoff-por-orcamento.test.ts` usa

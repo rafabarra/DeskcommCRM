@@ -140,7 +140,42 @@
       "lane": "db",
       "col": 2,
       "type": "database",
-      "label": "Vínculo opcional personal_handoff; ainda não consumido pelo roteamento"
+      "label": "Vínculo opcional personal_handoff; não altera o roteamento automático"
+    },
+    {
+      "id": "manual-channel-handoff-action",
+      "lane": "humano",
+      "col": 0,
+      "type": "ui",
+      "label": "Inbox: continuar na conexão pessoal, após confirmação"
+    },
+    {
+      "id": "manual-channel-handoff-api",
+      "lane": "app",
+      "col": 1,
+      "type": "service",
+      "label": "Agent dono ou manager+; tenant e destino resolvidos no servidor"
+    },
+    {
+      "id": "manual-channel-handoff-receipt",
+      "lane": "db",
+      "col": 2,
+      "type": "database",
+      "label": "Recibo idempotente server-only; falha retentável e auditável"
+    },
+    {
+      "id": "manual-channel-handoff-destination",
+      "lane": "db",
+      "col": 3,
+      "type": "database",
+      "label": "Segunda conversa real; mesmo contato, demanda e responsável"
+    },
+    {
+      "id": "manual-channel-handoff-open",
+      "lane": "app",
+      "col": 4,
+      "type": "service",
+      "label": "Inbox abre o destino; nenhuma mensagem é criada ou enviada"
     }
   ],
   "edges": [
@@ -248,6 +283,31 @@
       "from": "personal-channel-binding",
       "to": "personal-channel-editor",
       "label": "Estado atual ou vínculo inválido reparável"
+    },
+    {
+      "from": "manual-channel-handoff-action",
+      "to": "manual-channel-handoff-api",
+      "label": "Confirmar gesto manual com Idempotency-Key"
+    },
+    {
+      "from": "manual-channel-handoff-api",
+      "to": "personal-channel-binding",
+      "label": "Resolver conexão do responsável; cliente não escolhe sessão"
+    },
+    {
+      "from": "personal-channel-binding",
+      "to": "manual-channel-handoff-receipt",
+      "label": "Sessão ativa, message-capable e de mesmo tenant"
+    },
+    {
+      "from": "manual-channel-handoff-receipt",
+      "to": "manual-channel-handoff-destination",
+      "label": "Criar ou reutilizar atomicamente; recusar demanda conflitante"
+    },
+    {
+      "from": "manual-channel-handoff-destination",
+      "to": "manual-channel-handoff-open",
+      "label": "Retornar a conversa de destino sem copiar mensagens"
     }
   ]
 }

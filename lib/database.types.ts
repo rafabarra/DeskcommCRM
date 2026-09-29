@@ -3800,6 +3800,99 @@ export type Database = {
           },
         ];
       };
+      channel_handoffs: {
+        Row: {
+          assigned_user_id: string;
+          attempt_count: number;
+          created_at: string;
+          created_by_user_id: string;
+          demanda_id: string;
+          destination_channel_session_id: string | null;
+          destination_conversation_id: string | null;
+          failure_code: string | null;
+          id: string;
+          idempotency_key: string;
+          organization_id: string;
+          request_hash: string;
+          source_conversation_id: string;
+          status: string;
+          trigger_type: string;
+          updated_at: string;
+        };
+        Insert: {
+          assigned_user_id: string;
+          attempt_count?: number;
+          created_at?: string;
+          created_by_user_id: string;
+          demanda_id: string;
+          destination_channel_session_id?: string | null;
+          destination_conversation_id?: string | null;
+          failure_code?: string | null;
+          id?: string;
+          idempotency_key: string;
+          organization_id: string;
+          request_hash: string;
+          source_conversation_id: string;
+          status?: string;
+          trigger_type?: string;
+          updated_at?: string;
+        };
+        Update: {
+          assigned_user_id?: string;
+          attempt_count?: number;
+          created_at?: string;
+          created_by_user_id?: string;
+          demanda_id?: string;
+          destination_channel_session_id?: string | null;
+          destination_conversation_id?: string | null;
+          failure_code?: string | null;
+          id?: string;
+          idempotency_key?: string;
+          organization_id?: string;
+          request_hash?: string;
+          source_conversation_id?: string;
+          status?: string;
+          trigger_type?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "channel_handoffs_demanda_org_fk";
+            columns: ["organization_id", "demanda_id"];
+            isOneToOne: false;
+            referencedRelation: "demandas";
+            referencedColumns: ["organization_id", "id"];
+          },
+          {
+            foreignKeyName: "channel_handoffs_destination_org_fk";
+            columns: ["organization_id", "destination_conversation_id"];
+            isOneToOne: false;
+            referencedRelation: "conversations";
+            referencedColumns: ["organization_id", "id"];
+          },
+          {
+            foreignKeyName: "channel_handoffs_organization_id_fkey";
+            columns: ["organization_id"];
+            isOneToOne: false;
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "channel_handoffs_session_org_fk";
+            columns: ["organization_id", "destination_channel_session_id"];
+            isOneToOne: false;
+            referencedRelation: "channel_sessions";
+            referencedColumns: ["organization_id", "id"];
+          },
+          {
+            foreignKeyName: "channel_handoffs_source_org_fk";
+            columns: ["organization_id", "source_conversation_id"];
+            isOneToOne: false;
+            referencedRelation: "conversations";
+            referencedColumns: ["organization_id", "id"];
+          },
+        ];
+      };
       channel_integrations: {
         Row: {
           created_at: string;
@@ -12401,6 +12494,16 @@ export type Database = {
           p_payload?: Json;
         };
         Returns: string;
+      };
+      fn_manual_channel_handoff: {
+        Args: {
+          p_actor_user_id: string;
+          p_idempotency_key: string;
+          p_message_capable_providers: string[];
+          p_org: string;
+          p_source_conversation_id: string;
+        };
+        Returns: Json;
       };
       fn_mark_conversation_message: {
         Args: {

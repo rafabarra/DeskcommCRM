@@ -27,6 +27,7 @@ import {
 } from "@/hooks/inbox/useCloseConversation";
 import { useResumeAiAttendance } from "@/hooks/inbox/useResumeAiAttendance";
 import { usePauseAiAttendance } from "@/hooks/inbox/usePauseAiAttendance";
+import { useManualChannelHandoff } from "@/hooks/inbox/useManualChannelHandoff";
 import { useAutomaticoAtivo } from "@/hooks/ai/useAutomaticoAtivo";
 import { OwnerBadge } from "@/components/kanban/OwnerBadge";
 import { comandoDaConversa, ROTULO_DO_MOTIVO } from "@/lib/inbox/comando-da-conversa";
@@ -96,9 +97,14 @@ export function ConversationHeader({
   // "Existe automático nesta org?" — sem isto o selo afirmava que o robô estava
   // atendendo em instalação que nunca configurou agente nenhum.
   const automaticoDaOrg = useAutomaticoAtivo();
+  const continuarNaConexao = useManualChannelHandoff(
+    conversation.id,
+    user.support?.access_mode !== "support_readonly" && !!onAbrirConversa,
+  );
   const [reassignOpen, setReassignOpen] = useState(false);
   const [confirmFecharOpen, setConfirmFecharOpen] = useState(false);
   const [confirmArquivarOpen, setConfirmArquivarOpen] = useState(false);
+  const [confirmContinuarOpen, setConfirmContinuarOpen] = useState(false);
 
   const c = conversation.contacts ?? null;
   const displayName = rotuloDoContato(c, t);
@@ -328,6 +334,18 @@ export function ConversationHeader({
             {pausar.isPending ? t("Pausando...") : t("Pausar o automático")}
           </Button>
         )}
+        {onAbrirConversa && continuarNaConexao.availability.data?.available && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={continuarNaConexao.mutation.isPending}
+            onClick={() => setConfirmContinuarOpen(true)}
+          >
+            {continuarNaConexao.mutation.isPending
+              ? t("Preparando conexão...")
+              : t("Continuar na conexão pessoal")}
+          </Button>
+        )}
         {!encerrada && (
           <Button size="sm" variant="outline" onClick={() => setReassignOpen(true)}>
             {t("Transferir")}
@@ -437,6 +455,35 @@ export function ConversationHeader({
               }
             >
               {t("Fechar")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={confirmContinuarOpen} onOpenChange={setConfirmContinuarOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("Continuar na conexão pessoal?")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                "O atendimento do cliente continuará em outro número, em uma segunda conversa da mesma demanda. Nenhuma mensagem será enviada agora.",
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("Cancelar")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                continuarNaConexao.mutation.mutate(undefined, {
+                  onSuccess: (result) => {
+                    setConfirmContinuarOpen(false);
+                    if (result.destination_conversation_id) {
+                      onAbrirConversa?.(result.destination_conversation_id);
+                    }
+                  },
+                })
+              }
+            >
+              {t("Abrir conversa")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
