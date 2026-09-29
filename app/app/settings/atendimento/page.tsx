@@ -23,8 +23,10 @@ import { DEFAULT_VISIBILITY_MODE, ROLE_RANK, type VisibilityMode } from "@/lib/a
 import { routingConfigSchema } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { loadChannelRoutingSettings } from "@/lib/routing/channel-policies";
+import { loadAttendantPersonalChannelSettings } from "@/lib/routing/attendant-channel-bindings";
 import { ChannelRoutingForm } from "./_channels-form";
 import { AtendimentoForm } from "./_form";
+import { AttendantPersonalChannelsForm } from "./_personal-channels-form";
 import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
@@ -50,9 +52,14 @@ export default async function AtendimentoSettingsPage() {
   };
   // `.catch(...)`: config antiga ou corrompida no jsonb não pode derrubar a
   // tela que serve justamente para consertá-la.
-  const routing = routingConfigSchema.catch(routingConfigSchema.parse({})).parse(settings.routing ?? {});
+  const routing = routingConfigSchema
+    .catch(routingConfigSchema.parse({}))
+    .parse(settings.routing ?? {});
   const idioma = user.idioma;
-  const channels = await loadChannelRoutingSettings(supabase, activeOrg.orgId);
+  const [channels, personalChannels] = await Promise.all([
+    loadChannelRoutingSettings(supabase, activeOrg.orgId),
+    loadAttendantPersonalChannelSettings(supabase, activeOrg.orgId),
+  ]);
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto p-6">
@@ -69,9 +76,13 @@ export default async function AtendimentoSettingsPage() {
       </header>
 
       <AtendimentoForm
-        initial={{ ...routing, visibility_mode: settings.visibility_mode ?? DEFAULT_VISIBILITY_MODE }}
+        initial={{
+          ...routing,
+          visibility_mode: settings.visibility_mode ?? DEFAULT_VISIBILITY_MODE,
+        }}
       />
       <ChannelRoutingForm initial={channels} />
+      <AttendantPersonalChannelsForm initial={personalChannels} />
     </div>
   );
 }

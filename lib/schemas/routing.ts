@@ -204,8 +204,25 @@ export const availabilityPatchSchema = z
   });
 export type AvailabilityPatch = z.infer<typeof availabilityPatchSchema>;
 
-export const channelRoutingPatchSchema = z.object({
-  channel_session_id: z.string().uuid(),
-  user_ids: z.array(z.string().uuid()).max(1000),
-  reset: z.boolean().default(false),
-}).strict();
+export const channelRoutingPatchSchema = z
+  .object({
+    channel_session_id: z.string().uuid(),
+    user_ids: z.array(z.string().uuid()).max(1000),
+    reset: z.boolean().default(false),
+  })
+  .strict();
+
+/**
+ * Escolha opcional da conexão pessoal de um atendente.
+ *
+ * A organização não faz parte do corpo: a rota sempre a resolve da sessão.
+ * `null` remove o vínculo; ausência da chave é inválida para que um cliente
+ * antigo não apague configuração por acidente.
+ */
+export const attendantChannelBindingPatchSchema = z
+  .object({
+    user_id: z.string().uuid(),
+    channel_session_id: z.string().uuid().nullable(),
+  })
+  .strict();
+export type AttendantChannelBindingPatch = z.infer<typeof attendantChannelBindingPatchSchema>;
