@@ -5449,6 +5449,21 @@ export const DICIONARIO: Traducoes = {
   "Ler o log de auditoria": { es: "Leer el registro de auditoría" },
   // ─── Configurações: Distribuição de atendimento ───
   "Distribuição de atendimento salva.": { es: "Distribución de atención guardada." },
+  "Conexão pessoal salva.": { es: "Conexión personal guardada." },
+  "Conexão pessoal removida.": { es: "Conexión personal eliminada." },
+  "Conexão pessoal de cada atendente": { es: "Conexión personal de cada asesor" },
+  "Não transfere atendimentos automaticamente. Define apenas a conexão pessoal que poderá ser utilizada por futuras regras de continuação entre canais.": {
+    es: "No transfiere atenciones automáticamente. Solo define la conexión personal que podrán utilizar futuras reglas de continuidad entre canales.",
+  },
+  "A conexão gravada não está mais disponível. Escolha outra ou remova o vínculo.": {
+    es: "La conexión guardada ya no está disponible. Elige otra o elimina el vínculo.",
+  },
+  "Conexão pessoal": { es: "Conexión personal" },
+  "Indisponível": { es: "No disponible" },
+  "já vinculada": { es: "ya vinculada" },
+  "Conecte um número de mensagens para escolher uma conexão pessoal.": {
+    es: "Conecta un número de mensajería para elegir una conexión personal.",
+  },
   "Não consegui salvar.": { es: "No pude guardar." },
   "Quem recebe o cliente novo": { es: "Quién recibe al cliente nuevo" },
   "Vale para conversa que chega sem dono.": { es: "Se aplica a las conversaciones que llegan sin dueño." },

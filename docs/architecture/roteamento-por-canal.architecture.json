@@ -21,13 +21,7 @@
       "label": "Banco"
     }
   ],
-  "mainPath": [
-    "editor",
-    "policy",
-    "loader",
-    "claim",
-    "notice"
-  ],
+  "mainPath": ["editor", "policy", "loader", "claim", "notice"],
   "nodes": [
     {
       "id": "editor",
@@ -126,6 +120,27 @@
       "col": 1,
       "type": "service",
       "label": "Assinatura + conta/rede + Inbox existente"
+    },
+    {
+      "id": "personal-channel-editor",
+      "lane": "humano",
+      "col": 0,
+      "type": "ui",
+      "label": "Atendimento: conexão pessoal por atendente"
+    },
+    {
+      "id": "personal-channel-api",
+      "lane": "app",
+      "col": 1,
+      "type": "service",
+      "label": "Manager + MFA + support-write; capability canônica e auditoria"
+    },
+    {
+      "id": "personal-channel-binding",
+      "lane": "db",
+      "col": 2,
+      "type": "database",
+      "label": "Vínculo opcional personal_handoff; ainda não consumido pelo roteamento"
     }
   ],
   "edges": [
@@ -218,6 +233,21 @@
       "from": "notice",
       "to": "social-connections",
       "label": "Falha de conexão pede correção"
+    },
+    {
+      "from": "personal-channel-editor",
+      "to": "personal-channel-api",
+      "label": "Criar, trocar ou remover vínculo"
+    },
+    {
+      "from": "personal-channel-api",
+      "to": "personal-channel-binding",
+      "label": "Mesmo tenant, membro elegível e sessão de mensagens ativa"
+    },
+    {
+      "from": "personal-channel-binding",
+      "to": "personal-channel-editor",
+      "label": "Estado atual ou vínculo inválido reparável"
     }
   ]
 }

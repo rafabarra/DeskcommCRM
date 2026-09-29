@@ -15,17 +15,26 @@
  * Cobre também o RBAC da tela (agent não entra) e a persistência de verdade
  * (recarrega e o estado voltou do banco, não do estado local do React).
  */
+import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { createClient } from "@supabase/supabase-js";
 import { test, expect, type Page } from "./helpers/test";
 
+import { credenciaisSupabaseDeTeste } from "../../scripts/lib/env-de-teste";
+
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
+const localDb = credenciaisSupabaseDeTeste();
+const db = createClient(localDb.url, localDb.serviceRole, {
+  auth: { autoRefreshToken: false, persistSession: false },
+});
 
 interface Creds {
+  org_id: string;
   password: string;
-  users: Record<string, { email: string }>;
+  users: Record<string, { id: string; email: string }>;
 }
 
 function loadCreds(): Creds {
@@ -34,11 +43,14 @@ function loadCreds(): Creds {
     const c = JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as Creds;
     return !c.users?.manager;
   };
-  if (precisa()) execFileSync("npx", ["tsx", "scripts/seed-e2e-credentials.ts"], { stdio: "inherit" });
+  if (precisa())
+    execFileSync("npx", ["tsx", "scripts/seed-e2e-credentials.ts"], { stdio: "inherit" });
   return JSON.parse(fs.readFileSync(CREDS_PATH, "utf8")) as Creds;
 }
 
 const creds = loadCreds();
+let personalBindingUserId: string | null = null;
+let personalChannelId: string | null = null;
 
 async function login(page: Page, email: string): Promise<void> {
   await page.goto("/login");
@@ -50,13 +62,27 @@ async function login(page: Page, email: string): Promise<void> {
 
 /** O estado marcado vem do atributo que o próprio componente escreve. */
 async function marcada(page: Page, nome: string, valor: string): Promise<boolean> {
-  return (
-    (await page.getByTestId(`opcao-${nome}-${valor}`).getAttribute("data-marcada")) === "sim"
-  );
+  return (await page.getByTestId(`opcao-${nome}-${valor}`).getAttribute("data-marcada")) === "sim";
 }
 
 test.describe("distribuição de atendimento — a tela que liga o rodízio e a visibilidade", () => {
   test.describe.configure({ timeout: 120_000 });
+
+  test.beforeAll(async () => {
+    const { data, error } = await db
+      .from("channel_sessions")
+      .insert({
+        organization_id: creds.org_id,
+        waha_session_name: `personal-binding-${randomUUID()}`,
+        display_name: "Conexão pessoal E2E",
+        status: "STOPPED",
+        webhook_secret_encrypted: "\\x00",
+      })
+      .select("id")
+      .single();
+    if (error || !data) throw error ?? new Error("personal_channel_seed_failed");
+    personalChannelId = data.id;
+  });
 
   test.afterAll(async ({ browser }) => {
     // Devolve a org ao default do produto. Sem isto, uma spec que rode depois
@@ -65,9 +91,23 @@ test.describe("distribuição de atendimento — a tela que liga o rodízio e a 
     const page = await browser.newPage();
     await login(page, creds.users.manager!.email);
     await page.request.patch("/api/v1/settings/routing", {
-      data: { mode: "manual", max_retries: 5, backoff_seconds: 60, visibility_mode: "own_and_unassigned" },
+      data: {
+        mode: "manual",
+        max_retries: 5,
+        backoff_seconds: 60,
+        visibility_mode: "own_and_unassigned",
+      },
     });
+    if (personalBindingUserId) {
+      await page.request.patch("/api/v1/settings/routing/attendant-bindings", {
+        data: { user_id: personalBindingUserId, channel_session_id: null },
+      });
+    }
     await page.close();
+    if (personalChannelId) {
+      const { error } = await db.from("channel_sessions").delete().eq("id", personalChannelId);
+      if (error) throw error;
+    }
   });
 
   test("manager liga o rodízio e a restrição pela tela, e o estado sobrevive ao reload", async ({
@@ -83,9 +123,7 @@ test.describe("distribuição de atendimento — a tela que liga o rodízio e a 
     await porta.click();
     await page.waitForURL(/\/app\/settings\/atendimento/);
 
-    await expect(
-      page.getByRole("heading", { name: "Distribuição de atendimento" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Distribuição de atendimento" })).toBeVisible();
 
     // 2. O default do produto aparece: manual + "os seus e os sem dono".
     expect(await marcada(page, "modo", "manual")).toBe(true);
@@ -102,7 +140,10 @@ test.describe("distribuição de atendimento — a tela que liga o rodízio e a 
 
     // 5. Salva e recarrega: o estado tem de vir do BANCO. Sem o reload isto
     //    provaria só que o React guardou o clique.
-    await page.getByRole("button", { name: /^Salvar$/ }).click();
+    await page
+      .getByTestId("form-atendimento")
+      .getByRole("button", { name: "Salvar", exact: true })
+      .click();
     await expect(page.getByText(/Distribuição de atendimento salva/i)).toBeVisible();
 
     await page.reload();
@@ -136,6 +177,34 @@ test.describe("distribuição de atendimento — a tela que liga o rodízio e a 
     await expect(page.getByTestId("aviso-combinacao-morta")).toHaveCount(0);
   });
 
+  test("manager vincula uma conexão pessoal sem prometer transferência automática", async ({
+    page,
+  }) => {
+    await login(page, creds.users.manager!.email);
+    await page.goto("/app/settings/atendimento");
+
+    const card = page.getByTestId("conexoes-pessoais-atendentes");
+    await expect(card).toBeVisible();
+    await expect(card.getByText(/Não transfere atendimentos automaticamente/i)).toBeVisible();
+
+    const row = card.locator('[data-testid^="conexao-pessoal-"]').first();
+    await expect(row).toBeVisible();
+    personalBindingUserId =
+      (await row.getAttribute("data-testid"))?.replace("conexao-pessoal-", "") ?? null;
+    expect(personalBindingUserId).not.toBeNull();
+
+    const select = row.getByLabel("Conexão pessoal");
+    expect(personalChannelId).not.toBeNull();
+    await expect(select.locator(`option[value="${personalChannelId}"]`)).toBeEnabled();
+    await select.selectOption(personalChannelId!);
+    await row.getByRole("button", { name: "Salvar", exact: true }).click();
+    await expect(card.getByRole("status")).toContainText("Conexão pessoal salva");
+
+    await page.reload();
+    const persisted = page.getByTestId(`conexao-pessoal-${personalBindingUserId}`);
+    await expect(persisted.getByLabel("Conexão pessoal")).toHaveValue(personalChannelId!);
+  });
+
   test("atendente não abre a tela nem consegue gravar pela API", async ({ page }) => {
     await login(page, creds.users.agent!.email);
 
@@ -148,5 +217,13 @@ test.describe("distribuição de atendimento — a tela que liga o rodízio e a 
       data: { mode: "round_robin", max_retries: 5, backoff_seconds: 60, visibility_mode: "all" },
     });
     expect(res.status()).toBe(403);
+
+    const bindingRes = await page.request.patch("/api/v1/settings/routing/attendant-bindings", {
+      data: {
+        user_id: "10000000-0000-4000-8000-000000000001",
+        channel_session_id: null,
+      },
+    });
+    expect(bindingRes.status()).toBe(403);
   });
 });

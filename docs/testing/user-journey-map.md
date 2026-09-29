@@ -3072,3 +3072,21 @@ o CI só publica artefato em falha). Medido no run 36309605444, parte 3, head
 | J34.3 | Termo em 2 de 4 mensagens (uma em maiúsculas) | contador "Resultados nas mensagens carregadas: 2"; as 2 bolhas com o anel no `box-shadow` COMPUTADO (`0 0 0 4px`, cor ≠ fundo), uma enviada e uma recebida; as outras 2 sem anel | PASS — anel `rgb(28, 26, 22) 0 0 0 4px` sobre recebida `rgb(245, 243, 238)` e enviada `rgb(80, 109, 72)`; sem anel nas outras |
 | J34.4 | Esc fecha | campo, contador e marcas somem; o foco volta à lupa | PASS |
 | J34.5 | Trocar de conversa pela lista, sem recarregar | a conversa B (que tem o termo) abre sem campo, sem contador e sem marca; abrir a busca nela começa vazia | PASS |
+
+## J35 — Preparar a conexão pessoal de cada atendente `[P1]` (2026-09-28)
+
+Fase 1 da continuação futura entre canais. Spec: `tests/e2e/distribuicao-atendimento.spec.ts`
+(job e2e, parte 2). Nesta fase a configuração não é consumida pelo roteamento e não transfere
+atendimento; ausência de vínculo preserva o comportamento anterior.
+
+| Caso | Esperado | Cobertura |
+|---|---|---|
+| J35.1 | A gestora abre Configurações › Atendimento e vê cada atendente ativo com uma escolha opcional de conexão pessoal | E2E na spec de distribuição + componente `_personal-channels-form.test.tsx` |
+| J35.2 | A mesma conexão de mensagens não pode ser atribuída a duas pessoas | Componente + unicidade no banco em `attendant-channel-bindings.test.ts` |
+| J35.3 | Sessão arquivada, provider sem mensagens, convite pendente, membro revogado/viewer e outro tenant são recusados | API unitária + invariantes de banco |
+| J35.4 | Um vínculo antigo inválido permanece visível, não pode ser salvo novamente e pode ser substituído ou removido | Componente `_personal-channels-form.test.tsx` |
+| J35.5 | A tela avisa que a escolha não transfere atendimentos automaticamente | E2E + componente |
+| J35.6 | Atendente não abre a configuração nem grava pela API; no banco lê somente o próprio vínculo | E2E para a API + RLS no teste de invariantes |
+
+**NÃO coberto nesta fase:** qualquer handoff, troca de canal, envio por conexão pessoal ou consumo
+do vínculo pelo motor. Esses comportamentos pertencem à fase seguinte e não foram ligados.
