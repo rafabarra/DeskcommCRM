@@ -39,6 +39,7 @@ export function useManualChannelHandoff(conversationId: string, enabled: boolean
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["conversation", conversationId] });
       qc.invalidateQueries({ queryKey: ["conversation-channel-handoff", conversationId] });
+      qc.invalidateQueries({ queryKey: ["conversation-journey"] });
       if (result.destination_conversation_id) {
         qc.invalidateQueries({
           queryKey: ["conversation", result.destination_conversation_id],

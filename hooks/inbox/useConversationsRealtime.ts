@@ -150,6 +150,9 @@ export function useConversationsRealtime(
 
   const onChange = useCallback(() => {
     qc.invalidateQueries({ queryKey: ["conversations"] });
+    // Uma alteração de conversation pode criar/alterar um episódio da Jornada.
+    // Invalidar é suficiente; não abrimos uma assinatura por episódio.
+    qc.invalidateQueries({ queryKey: ["conversation-journey"] });
   }, [qc]);
 
   // G4-01 (visibility_mode): a subscription postgres_changes HERDA a RLS de

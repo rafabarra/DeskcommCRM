@@ -26,6 +26,7 @@ import { test, expect, type Page } from "./helpers/test";
 import { credenciaisSupabaseDeTeste } from "../../scripts/lib/env-de-teste";
 
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
+const JOURNEY_EVIDENCE = path.join(process.cwd(), "evidence", "continuidade-multicanal");
 const localDb = credenciaisSupabaseDeTeste();
 const db = createClient(localDb.url, localDb.serviceRole, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -52,10 +53,12 @@ const creds = loadCreds();
 let personalBindingUserId: string | null = null;
 let personalChannelId: string | null = null;
 let sourceChannelId: string | null = null;
+let hiddenJourneyChannelId: string | null = null;
 let handoffContactId: string | null = null;
 let handoffDemandId: string | null = null;
 let handoffSourceId: string | null = null;
 let handoffDestinationId: string | null = null;
+let hiddenJourneyConversationId: string | null = null;
 
 async function login(page: Page, email: string): Promise<void> {
   await page.goto("/login");
@@ -103,6 +106,22 @@ test.describe("distribuição de atendimento — a tela que liga o rodízio e a 
       throw source.error ?? new Error("source_channel_seed_failed");
     }
     sourceChannelId = source.data.id;
+
+    const hidden = await db
+      .from("channel_sessions")
+      .insert({
+        organization_id: creds.org_id,
+        waha_session_name: `journey-hidden-${randomUUID()}`,
+        display_name: "Conexão restrita E2E",
+        status: "STOPPED",
+        webhook_secret_encrypted: "\\x00",
+      })
+      .select("id")
+      .single();
+    if (hidden.error || !hidden.data) {
+      throw hidden.error ?? new Error("hidden_channel_seed_failed");
+    }
+    hiddenJourneyChannelId = hidden.data.id;
   });
 
   test.afterAll(async ({ browser }) => {
@@ -125,6 +144,9 @@ test.describe("distribuição de atendimento — a tela que liga o rodízio e a 
       });
     }
     await page.close();
+    if (hiddenJourneyConversationId) {
+      await db.from("conversations").delete().eq("id", hiddenJourneyConversationId);
+    }
     if (handoffDestinationId) {
       await db.from("conversations").delete().eq("id", handoffDestinationId);
     }
@@ -137,6 +159,13 @@ test.describe("distribuição de atendimento — a tela que liga o rodízio e a 
     }
     if (sourceChannelId) {
       const { error } = await db.from("channel_sessions").delete().eq("id", sourceChannelId);
+      if (error) throw error;
+    }
+    if (hiddenJourneyChannelId) {
+      const { error } = await db
+        .from("channel_sessions")
+        .delete()
+        .eq("id", hiddenJourneyChannelId);
       if (error) throw error;
     }
   });
@@ -218,7 +247,7 @@ test.describe("distribuição de atendimento — a tela que liga o rodízio e a 
     await expect(card).toBeVisible();
     await expect(card.getByText(/Não transfere atendimentos automaticamente/i)).toBeVisible();
 
-    const row = card.locator('[data-testid^="conexao-pessoal-"]').first();
+    const row = card.getByTestId(`conexao-pessoal-${creds.users.agent!.id}`);
     await expect(row).toBeVisible();
     personalBindingUserId =
       (await row.getAttribute("data-testid"))?.replace("conexao-pessoal-", "") ?? null;
@@ -372,6 +401,191 @@ test.describe("distribuição de atendimento — a tela que liga o rodízio e a 
       assigned_user_id: personalBindingUserId,
     });
     expect(audit.data).toHaveLength(1);
+  });
+
+  test("manager lê a jornada multicanal sem trocar silenciosamente a conversa ativa", async ({
+    page,
+  }) => {
+    expect(handoffSourceId).not.toBeNull();
+    expect(handoffDestinationId).not.toBeNull();
+    expect(handoffContactId).not.toBeNull();
+    expect(handoffDemandId).not.toBeNull();
+    expect(sourceChannelId).not.toBeNull();
+    expect(personalChannelId).not.toBeNull();
+
+    const receipt = await db
+      .from("channel_handoffs")
+      .select("created_at")
+      .eq("source_conversation_id", handoffSourceId!)
+      .single();
+    if (receipt.error || !receipt.data) {
+      throw receipt.error ?? new Error("journey_handoff_receipt_missing");
+    }
+    const handoffAt = new Date(receipt.data.created_at).getTime();
+    const messages = [
+      {
+        organization_id: creds.org_id,
+        conversation_id: handoffSourceId!,
+        channel_session_id: sourceChannelId!,
+        contact_id: handoffContactId!,
+        type: "text" as const,
+        direction: "outbound",
+        status: "sent",
+        sent_via: "user",
+        sent_by_user_id: creds.users.manager!.id,
+        body: "Mensagem no número principal",
+        sent_at: new Date(handoffAt - 1).toISOString(),
+        service_revision: 1,
+        demanda_id: handoffDemandId!,
+      },
+      {
+        organization_id: creds.org_id,
+        conversation_id: handoffDestinationId!,
+        channel_session_id: personalChannelId!,
+        contact_id: handoffContactId!,
+        type: "text" as const,
+        direction: "outbound",
+        status: "sent",
+        sent_via: "user",
+        sent_by_user_id: creds.users.manager!.id,
+        body: "Mensagem na conexão pessoal",
+        sent_at: new Date(handoffAt + 1).toISOString(),
+        service_revision: 1,
+        demanda_id: handoffDemandId!,
+      },
+    ];
+    const seeded = await db.from("messages").insert(messages);
+    if (seeded.error) throw seeded.error;
+
+    await login(page, creds.users.manager!.email);
+    await page.goto(`/app/inbox?id=${handoffDestinationId}&filter=all`);
+    await page.getByRole("button", { name: "Jornada", exact: true }).click();
+
+    const journey = page.getByTestId("journey-thread");
+    await expect(journey).toBeVisible({ timeout: 30_000 });
+    await expect(journey.getByText("Mensagem no número principal", { exact: true })).toBeVisible();
+    await expect(journey.getByText("Mensagem na conexão pessoal", { exact: true })).toBeVisible();
+    await expect(journey.getByText("Atendimento continuado em outro número")).toBeVisible();
+    await expect(journey.getByText(/Conexão principal E2E/).first()).toBeVisible();
+    await expect(journey.getByText(/Conexão pessoal E2E/).first()).toBeVisible();
+    await expect(journey.getByRole("button", { name: "Opções da mensagem" })).toHaveCount(0);
+
+    // A jornada é leitura agregada; o destino de envio continua sendo o id da
+    // URL até a pessoa escolher outro episódio explicitamente.
+    expect(new URL(page.url()).searchParams.get("id")).toBe(handoffDestinationId);
+    await expect(page.getByText(/Respondendo por: Conexão pessoal E2E/)).toBeVisible();
+
+    // A inserção precisa acontecer depois do join real; caso contrário o
+    // teste pode passar pelo refetch de segurança sem provar a entrega ao vivo.
+    await expect(journey).toHaveAttribute("data-realtime-status", "subscribed", {
+      timeout: 30_000,
+    });
+
+    const realtime = await db.from("messages").insert({
+      organization_id: creds.org_id,
+      conversation_id: handoffDestinationId!,
+      channel_session_id: personalChannelId!,
+      contact_id: handoffContactId!,
+      type: "text",
+      direction: "outbound",
+      status: "sent",
+      sent_via: "user",
+      sent_by_user_id: creds.users.manager!.id,
+      body: "Mensagem nova na jornada em tempo real",
+      sent_at: new Date(handoffAt + 2).toISOString(),
+      service_revision: 1,
+      demanda_id: handoffDemandId!,
+    });
+    if (realtime.error) throw realtime.error;
+    await expect(
+      journey.getByText("Mensagem nova na jornada em tempo real", { exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+    expect(new URL(page.url()).searchParams.get("id")).toBe(handoffDestinationId);
+
+    fs.mkdirSync(JOURNEY_EVIDENCE, { recursive: true });
+    await page.screenshot({
+      path: path.join(JOURNEY_EVIDENCE, "jornada-multicanal.png"),
+      fullPage: true,
+    });
+
+    await journey.getByRole("button", { name: "Abrir conversa de origem" }).click();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("id"), { timeout: 30_000 })
+      .toBe(handoffSourceId);
+    await expect(page.getByRole("button", { name: "Conversa atual", exact: true })).toBeVisible();
+  });
+
+  test("atendente recebe somente os episódios que a RLS permite", async ({ page }) => {
+    expect(handoffContactId).not.toBeNull();
+    expect(handoffDemandId).not.toBeNull();
+    expect(sourceChannelId).not.toBeNull();
+    expect(hiddenJourneyChannelId).not.toBeNull();
+    expect(handoffDestinationId).not.toBeNull();
+
+    const hidden = await db
+      .from("conversations")
+      .insert({
+        organization_id: creds.org_id,
+        contact_id: handoffContactId,
+        channel_session_id: hiddenJourneyChannelId,
+        status: "claimed",
+        assigned_to_user_id: creds.users.manager!.id,
+        assigned_to_user_name: "Gestor E2E",
+        assigned_at: new Date().toISOString(),
+        assignee_kind: "user",
+        bot_silenced_until: "infinity",
+        current_demanda_id: handoffDemandId,
+        service_revision: 2,
+        service_started_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (hidden.error || !hidden.data) throw hidden.error ?? new Error("hidden_episode_seed");
+    hiddenJourneyConversationId = hidden.data.id;
+    const hiddenLink = await db.from("demanda_conversas").insert({
+      organization_id: creds.org_id,
+      demanda_id: handoffDemandId,
+      conversation_id: hiddenJourneyConversationId,
+      service_revision: 2,
+    });
+    if (hiddenLink.error) throw hiddenLink.error;
+    const hiddenMessage = await db.from("messages").insert({
+      organization_id: creds.org_id,
+      conversation_id: hiddenJourneyConversationId,
+      channel_session_id: hiddenJourneyChannelId,
+      contact_id: handoffContactId,
+      type: "text",
+      direction: "outbound",
+      status: "sent",
+      sent_via: "user",
+      sent_by_user_id: creds.users.manager!.id,
+      body: "EPISÓDIO FORA DO ESCOPO DO ATENDENTE",
+      sent_at: new Date().toISOString(),
+      service_revision: 2,
+      demanda_id: handoffDemandId,
+    });
+    if (hiddenMessage.error) throw hiddenMessage.error;
+
+    await login(page, creds.users.agent!.email);
+    await page.goto(`/app/inbox?id=${handoffDestinationId}&filter=all`);
+    await page.getByRole("button", { name: "Jornada", exact: true }).click();
+    const journey = page.getByTestId("journey-thread");
+    await expect(journey.getByText("Mensagem no número principal", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(journey.getByText("Mensagem na conexão pessoal", { exact: true })).toBeVisible();
+    await expect(journey.getByText("EPISÓDIO FORA DO ESCOPO DO ATENDENTE")).toHaveCount(0);
+
+    const response = await page.request.get(
+      `/api/v1/conversations/${handoffDestinationId}/journey?limit=50`,
+    );
+    expect(response.status()).toBe(200);
+    const payload = (await response.json()) as {
+      data: { episodes: Array<{ conversation_id: string }> };
+    };
+    expect(payload.data.episodes.map((episode) => episode.conversation_id)).not.toContain(
+      hiddenJourneyConversationId,
+    );
   });
 
   test("atendente não abre a tela nem consegue gravar pela API", async ({ page }) => {

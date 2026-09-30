@@ -17,6 +17,7 @@ import {
 } from "@/hooks/inbox/useConversationsRealtime";
 import { useConversation, isNotFound } from "@/hooks/inbox/useConversation";
 import { ConversationList } from "./ConversationList";
+import { JourneyThread } from "./JourneyThread";
 import { InboxFilters, type InboxFiltersValue, type InboxTab } from "./InboxFilters";
 import { ChatThread } from "./ChatThread";
 import { Composer, type ComposerHandle } from "./Composer";
@@ -37,6 +38,7 @@ import { comandosDaFila } from "@/lib/inbox/comando-da-conversa";
 import type { AvisoDeRascunho } from "@/lib/inbox/rascunho-sugerido";
 import { buscaValeConsulta } from "@/lib/inbox/termo-de-busca";
 import { useAutomaticoAtivo } from "@/hooks/ai/useAutomaticoAtivo";
+import { useConversationJourney } from "@/hooks/inbox/useConversationJourney";
 
 /**
  * QUAL COLUNA APARECE NO CELULAR — as duas saem da MESMA pergunta.
@@ -166,6 +168,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   }, [tab, setFilterValue]);
 
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? idNaUrl);
+  const [threadView, setThreadView] = useState<"current" | "journey">("current");
   const ultimoIdNaUrl = useRef(idNaUrl);
   const [visibleIds, setVisibleIds] = useState<string[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -206,6 +209,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
     // O histórico do navegador também troca a conversa, sem carregar a página inteira.
     setSelectedId(idNaUrl);
     setRespondendo(null);
+    setThreadView("current");
   }, [idNaUrl]);
 
   /**
@@ -288,6 +292,17 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   const needsFetch = !!selectedId && !inList;
   const single = useConversation(selectedId, needsFetch);
   const selectedConversation: ConversationWithContact | null = inList ?? single.data ?? null;
+  const journeyPreview = useConversationJourney(
+    selectedConversation?.id ?? null,
+    Boolean(selectedConversation),
+    false,
+  );
+  const journeyFirstPage = journeyPreview.data?.pages[0]?.data;
+  const journeyAvailable = Boolean(
+    journeyFirstPage?.available &&
+      (journeyFirstPage.episodes.length > 1 ||
+        journeyFirstPage.items.some((item) => item.kind === "channel_handoff")),
+  );
   const selectionNotFound =
     needsFetch && !single.isPending && !single.data && isNotFound(single.error);
 
@@ -310,6 +325,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   const handleSelect = useCallback((id: string | null) => {
     if (id === selectedId) return;
     setSelectedId(id);
+    setThreadView("current");
     // Sem isto, escolher "responder" numa conversa e trocar para outra levaria
     // a citação junto — e a resposta sairia citando mensagem de outro cliente.
     setRespondendo(null);
@@ -323,6 +339,13 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
     const query = params.toString();
     window.history.pushState(null, "", query ? `${pathname}?${query}` : pathname);
   }, [selectedId, searchParams, pathname]);
+  const handleJourneyOpen = useCallback(
+    (id: string) => {
+      setThreadView("current");
+      handleSelect(id);
+    },
+    [handleSelect],
+  );
   const handleVisibleChange = useCallback((ids: string[]) => setVisibleIds(ids), []);
   const handleFocusReply = useCallback(() => composerRef.current?.focus(), []);
   const handleClaim = useCallback(() => {
@@ -534,15 +557,48 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
               key={selectedConversation.id}
               conversation={selectedConversation}
               onAbrirConversa={handleSelect}
-              onBuscar={() =>
-                buscaAberta
-                  ? fecharBusca()
-                  : setBusca({ conversaId: selectedConversation.id, termo: "" })
+              onBuscar={
+                threadView === "current"
+                  ? () =>
+                      buscaAberta
+                        ? fecharBusca()
+                        : setBusca({ conversaId: selectedConversation.id, termo: "" })
+                  : undefined
               }
               buscaAberta={buscaAberta}
               botaoBuscaRef={botaoBuscaRef}
             />
-            {buscaAberta && (
+            {journeyAvailable && (
+              <div
+                className="flex items-center gap-1 border-b border-border px-4 py-1.5"
+                role="group"
+                aria-label={t("Modo de visualização")}
+              >
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={threadView === "journey" ? "secondary" : "ghost"}
+                  aria-pressed={threadView === "journey"}
+                  onClick={() => {
+                    setBusca(null);
+                    setRespondendo(null);
+                    setThreadView("journey");
+                  }}
+                >
+                  {t("Jornada")}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={threadView === "current" ? "secondary" : "ghost"}
+                  aria-pressed={threadView === "current"}
+                  onClick={() => setThreadView("current")}
+                >
+                  {t("Conversa atual")}
+                </Button>
+              </div>
+            )}
+            {buscaAberta && threadView === "current" && (
               <div className="flex items-center gap-2 border-b border-border px-4 py-1.5">
                 <MagnifyingGlass size={16} className="shrink-0 text-muted-foreground" aria-hidden />
                 <input
@@ -569,22 +625,38 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
               </div>
             )}
             <div className="min-h-0 flex-1 overflow-hidden">
-              <ChatThread
-                conversationId={selectedConversation.id}
-                searchTerm={buscaAberta ? busca.termo : ""}
-                provider={selectedConversation.channel_sessions?.provider ?? null}
-                onResponder={setRespondendo}
-                // O cartão da passagem escolhe o gesto a partir de quem é o dono
-                // da conversa: sem dono convida a assumir, com outro dono diz
-                // quem atende. Sem estes dois campos ele cairia no estado mais
-                // conservador e ficaria mudo justamente para quem mais precisa.
-                dono={{
-                  userId: selectedConversation.assigned_to_user_id ?? null,
-                  nome: selectedConversation.assigned_to_user_name ?? null,
-                }}
-                contatoId={selectedConversation.contacts?.id ?? null}
-              />
+              {threadView === "journey" ? (
+                <JourneyThread
+                  key={`journey:${selectedConversation.id}`}
+                  conversationId={selectedConversation.id}
+                  onOpenConversation={handleJourneyOpen}
+                />
+              ) : (
+                <ChatThread
+                  conversationId={selectedConversation.id}
+                  searchTerm={buscaAberta ? busca.termo : ""}
+                  provider={selectedConversation.channel_sessions?.provider ?? null}
+                  onResponder={setRespondendo}
+                  // O cartão da passagem escolhe o gesto a partir de quem é o dono
+                  // da conversa: sem dono convida a assumir, com outro dono diz
+                  // quem atende. Sem estes dois campos ele cairia no estado mais
+                  // conservador e ficaria mudo justamente para quem mais precisa.
+                  dono={{
+                    userId: selectedConversation.assigned_to_user_id ?? null,
+                    nome: selectedConversation.assigned_to_user_name ?? null,
+                  }}
+                  contatoId={selectedConversation.contacts?.id ?? null}
+                />
+              )}
             </div>
+            {threadView === "journey" && (
+              <div className="border-t border-border bg-muted/30 px-4 py-1.5 text-xs text-muted-foreground">
+                {t("Respondendo por:")} {selectedConversation.channel_sessions?.display_name ?? t("Conversa atual")}
+                {selectedConversation.channel_sessions?.phone_number
+                  ? ` · ${selectedConversation.channel_sessions.phone_number}`
+                  : ""}
+              </div>
+            )}
             <RetentionNotice conversationId={selectedConversation.id} />
             {selectedConversation.contacts?.id && (
               <NumeroForaDoAr

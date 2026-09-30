@@ -3108,3 +3108,22 @@ conversas ficam ligadas à mesma demanda; nenhuma mensagem é copiada ou enviada
 
 **NÃO coberto nesta fase:** timeline agregada, alternância jornada/conversa, primeira mensagem
 automática, regra pós-triagem, automação de handoff ou mudança de capacidade/round-robin.
+
+## J37 — Ler a jornada multicanal sem fundir conversas `[P1]` (2026-09-29)
+
+Fase 2B da continuação entre canais. A Jornada é uma projeção de leitura sobre as conversations
+ligadas à mesma demanda; a aba Conversa atual e o `selectedId` continuam sendo a referência de
+todas as ações. Spec: `tests/e2e/distribuicao-atendimento.spec.ts`. Evidência local:
+`evidence/continuidade-multicanal/jornada-multicanal.png`.
+
+| Caso | Esperado | Cobertura |
+|---|---|---|
+| J37.1 | Jornada intercala mensagens das conversations reais e o recibo de handoff em ordem cronológica | E2E + `lib/inbox/journey.test.ts` |
+| J37.2 | Cada mensagem identifica conexão/número; o handoff identifica origem e destino | E2E + componente `ChannelHandoffCard` |
+| J37.3 | A paginação por cursor não duplica itens nem carrega histórico ilimitado | Testes focais de ordenação/cursor + botão “Carregar mensagens mais antigas” |
+| J37.4 | Atendente só recebe episódios visíveis pela RLS, mesmo que a demanda tenha outro vínculo | E2E com episódio de manager fora do escopo + rota ancorada no client de sessão |
+| J37.5 | A Jornada não oferece resposta/edição na bolha e não troca o destino de envio implicitamente | E2E; composer continua rotulado com a conversation ativa |
+| J37.6 | Abrir origem/destino exige gesto explícito e volta para Conversa atual | E2E |
+
+**NÃO coberto nesta fase:** automação de troca de canal, envio automático, cópia de mensagens,
+mudança de comportamento de agentes/IA ou unificação física de conversations.
