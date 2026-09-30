@@ -176,6 +176,41 @@
       "col": 4,
       "type": "service",
       "label": "Inbox abre o destino; nenhuma mensagem é criada ou enviada"
+    },
+    {
+      "id": "journey-view",
+      "lane": "humano",
+      "col": 0,
+      "type": "ui",
+      "label": "Inbox: Jornada (leitura) ou Conversa atual (ações)"
+    },
+    {
+      "id": "journey-query",
+      "lane": "app",
+      "col": 1,
+      "type": "service",
+      "label": "Projeção paginada; conversation ativa ancora tenant e RLS"
+    },
+    {
+      "id": "journey-sources",
+      "lane": "db",
+      "col": 2,
+      "type": "database",
+      "label": "demanda_conversas + messages + recibos de handoff, sem cópia"
+    },
+    {
+      "id": "journey-realtime",
+      "lane": "app",
+      "col": 3,
+      "type": "service",
+      "label": "Realtime só da conversa ativa; invalidação e refetch de segurança"
+    },
+    {
+      "id": "journey-switch",
+      "lane": "humano",
+      "col": 4,
+      "type": "ui",
+      "label": "Troca explícita de episódio atualiza selectedId"
     }
   ],
   "edges": [
@@ -308,6 +343,36 @@
       "from": "manual-channel-handoff-destination",
       "to": "manual-channel-handoff-open",
       "label": "Retornar a conversa de destino sem copiar mensagens"
+    },
+    {
+      "from": "journey-view",
+      "to": "journey-query",
+      "label": "GET por conversation ativa e cursor opaco"
+    },
+    {
+      "from": "journey-query",
+      "to": "journey-sources",
+      "label": "Derivar demanda e filtrar cada episódio pela RLS"
+    },
+    {
+      "from": "journey-sources",
+      "to": "journey-realtime",
+      "label": "Itens cronológicos, conexão e evento visual"
+    },
+    {
+      "from": "journey-realtime",
+      "to": "journey-view",
+      "label": "Atualizar leitura sem assinar N conversations"
+    },
+    {
+      "from": "journey-view",
+      "to": "journey-switch",
+      "label": "Abrir origem ou destino por clique"
+    },
+    {
+      "from": "journey-switch",
+      "to": "manual-channel-handoff-open",
+      "label": "Conversa atual continua sendo o único destino de ações"
     }
   ]
 }

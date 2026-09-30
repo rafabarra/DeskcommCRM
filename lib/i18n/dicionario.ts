@@ -2480,7 +2480,6 @@ export const DICIONARIO: Traducoes = {
   },
   FAQ: { es: "FAQ" },
   "Política": { es: "Política" },
-  "Conversa": { es: "Conversación" },
   "Catálogo": { es: "Catálogo" },
   Fonte: { es: "Fuente" },
   "Mostrar citações da resposta": { es: "Mostrar referencias de la respuesta" },
@@ -12755,6 +12754,24 @@ export const DICIONARIO: Traducoes = {
   "Esta conversa não pode continuar na conexão pessoal agora.": {
     es: "Esta conversación no puede continuar en la conexión personal ahora.",
   },
+  "Jornada": { es: "Recorrido" },
+  "Modo de visualização": { es: "Modo de visualización" },
+  "Não foi possível carregar a jornada.": { es: "No se pudo cargar el recorrido." },
+  "Esta conversa ainda não possui uma jornada multicanal.": {
+    es: "Esta conversación todavía no tiene un recorrido multicanal.",
+  },
+  "Carregar mensagens mais antigas": { es: "Cargar mensajes anteriores" },
+  "Nenhuma mensagem nesta jornada.": { es: "No hay mensajes en este recorrido." },
+  "Conversa atual": { es: "Conversación actual" },
+  "Respondendo por:": { es: "Respondiendo por:" },
+  "Abrir esta conversa": { es: "Abrir esta conversación" },
+  "Atendimento continuado em outro número": {
+    es: "Atención continuada en otro número",
+  },
+  "Conversa de origem": { es: "Conversación de origen" },
+  "Conversa de destino": { es: "Conversación de destino" },
+  "Abrir conversa de origem": { es: "Abrir conversación de origen" },
+  "Abrir conversa de destino": { es: "Abrir conversación de destino" },
 };
 
 /**
