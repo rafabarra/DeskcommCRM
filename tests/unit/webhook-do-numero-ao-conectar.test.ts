@@ -493,11 +493,12 @@ describe("validateMetaCredentials com wabaId — o par número/WABA (fonte real)
 });
 
 describe("POST /api/v1/channels/official — conectar registra o webhook", () => {
+  const TOKEN_MANUAL = "token-manual-que-nunca-pode-voltar";
   const conectarReq = () =>
     new NextRequest("https://crm.exemplo.com/api/v1/channels/official", {
       method: "POST",
       headers: { origin: BASE, "content-type": "application/json" },
-      body: JSON.stringify({ phone_number_id: NUMERO, waba_id: WABA, token: "x".repeat(30) }),
+      body: JSON.stringify({ phone_number_id: NUMERO, waba_id: WABA, token: TOKEN_MANUAL }),
     });
 
   it("registra DEPOIS de gravar a sessão e devolve o estado do registro", async () => {
@@ -510,6 +511,7 @@ describe("POST /api/v1/channels/official — conectar registra o webhook", () =>
 
     expect(res.status).toBe(200);
     expect(corpo.data).toMatchObject({ connected: true });
+    expect(JSON.stringify(corpo)).not.toContain(TOKEN_MANUAL);
     // O endereço é o da SESSÃO: o domínio é decisão de instalação
     // (`NEXT_PUBLIC_APP_URL`, com o `origin` como reserva) e o que esta fatia promete
     // é que a URL que a Meta recebeu é a MESMA que a tela mostra — divergir mandaria o
@@ -571,6 +573,22 @@ describe("POST /api/v1/channels/official — conectar registra o webhook", () =>
     expect(vi.mocked(validateMetaCredentials)).toHaveBeenCalledWith(
       expect.objectContaining({ wabaId: WABA }),
     );
+  });
+
+  it("falha de cifra recusa a conexão sem gravar token nem registrar webhook", async () => {
+    const registro = makeDb({ sessions: [] });
+    const chamadas = stubMeta({});
+    authOk();
+    vi.mocked(encryptWebhookSecret).mockResolvedValue(null as never);
+
+    const res = await conectar(conectarReq());
+    const corpo = await res.json();
+
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(corpo)).toContain("token não foi gravado");
+    expect(JSON.stringify(corpo)).not.toContain(TOKEN_MANUAL);
+    expect(registro.escritas).toHaveLength(0);
+    expect(chamadas).toHaveLength(0);
   });
 });
 

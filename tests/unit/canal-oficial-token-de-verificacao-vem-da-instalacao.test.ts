@@ -91,14 +91,26 @@ afterEach(() => {
   process.env = { ...ORIGINAL };
 });
 
-async function webhookDaTela(): Promise<Record<string, unknown>> {
+async function estadoDaTela(): Promise<Record<string, unknown>> {
   const { GET } = await import("@/app/api/v1/channels/official/route");
   const res = await GET(new NextRequest("http://localhost/api/v1/channels/official"));
-  const corpo = (await res.json()) as { data: { webhook: Record<string, unknown> } };
-  return corpo.data.webhook;
+  const corpo = (await res.json()) as { data: Record<string, unknown> };
+  return corpo.data;
+}
+
+async function webhookDaTela(): Promise<Record<string, unknown>> {
+  return (await estadoDaTela()).webhook as Record<string, unknown>;
 }
 
 describe("GET /api/v1/channels/official — o token de verificação", () => {
+  it("a credencial do canal nunca aparece no GET, nem mesmo cifrada", async () => {
+    const estado = await estadoDaTela();
+
+    expect(estado.hasToken).toBe(true);
+    expect(estado).not.toHaveProperty("token");
+    expect(JSON.stringify(estado)).not.toContain("\\x_cifra");
+  });
+
   it("⭐ App cadastrado na instalação: não devolve token nenhum, e diz onde ele está", async () => {
     linhaDaMeta = { app_secret_encrypted: "cifra_segredo", verify_token_encrypted: "cifra_token" };
     // O `.env` antigo continua lá — e NÃO é mais o que a Meta precisa receber.
