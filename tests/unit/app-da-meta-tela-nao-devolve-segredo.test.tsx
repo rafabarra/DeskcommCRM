@@ -32,6 +32,8 @@ const CIFRA_DO_TOKEN = "\\x_cifra_do_token_da_meta";
 const SEGREDO_DO_ENV = "segredo-do-env-que-nao-pode-vazar";
 const TOKEN_DO_ENV = "token-do-env-que-nao-pode-vazar";
 const TOKEN_GERADO = "tOkEn_gerado_pelo_servidor_0123456789abcdef";
+const APP_ID = "123456789012345";
+const HOSTED_SIGNUP_URL = "https://business.facebook.com/wa/manage/embedded-signup/";
 
 let linha: Record<string, string | null> | null = null;
 let erroDaLeitura: { code: string; message: string } | null = null;
@@ -51,7 +53,9 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 const decifrar = vi.fn();
-vi.mock("@/lib/webhooks/secrets", () => ({ decryptWebhookSecret: (...a: unknown[]) => decifrar(...a) }));
+vi.mock("@/lib/webhooks/secrets", () => ({
+  decryptWebhookSecret: (...a: unknown[]) => decifrar(...a),
+}));
 
 const updateMetaApp = vi.fn();
 const rotacionarVerifyTokenDaMeta = vi.fn();
@@ -85,6 +89,7 @@ beforeEach(() => {
   erroDaLeitura = null;
   process.env.META_APP_SECRET = SEGREDO_DO_ENV;
   process.env.META_WEBHOOK_VERIFY_TOKEN = TOKEN_DO_ENV;
+  delete process.env.META_APP_ID;
   decifrar.mockReset();
   updateMetaApp.mockReset();
   rotacionarVerifyTokenDaMeta.mockReset();
@@ -109,6 +114,8 @@ async function propsDaPagina(): Promise<Props> {
 describe("/admin/meta — o que a página entrega ao navegador", () => {
   it("⭐ com tudo configurado, nenhum segredo atravessa — nem cifrado, nem o do .env", async () => {
     linha = {
+      app_id: APP_ID,
+      hosted_signup_url: HOSTED_SIGNUP_URL,
       app_secret_encrypted: CIFRA_DO_SEGREDO,
       verify_token_encrypted: CIFRA_DO_TOKEN,
       verify_token_created_at: "2026-09-15T13:00:00.000Z",
@@ -127,12 +134,15 @@ describe("/admin/meta — o que a página entrega ao navegador", () => {
       temTokenSalvo: true,
       temNoAmbiente: true,
       leituraFalhou: false,
+      appIdInicial: APP_ID,
+      hostedSignupUrlInicial: HOSTED_SIGNUP_URL,
     });
     expect(props.tokenGeradoEm).toBe("15/09/2026, 10:00");
     expect(decifrar).not.toHaveBeenCalled();
   });
 
   it("instalação que nunca configurou: tudo falso, e o .env aparece como reserva", async () => {
+    process.env.META_APP_ID = "999999999";
     const props = await propsDaPagina();
 
     expect(props).toMatchObject({
@@ -142,6 +152,8 @@ describe("/admin/meta — o que a página entrega ao navegador", () => {
       atualizadoEm: null,
       temNoAmbiente: true,
       leituraFalhou: false,
+      appIdInicial: "999999999",
+      hostedSignupUrlInicial: null,
     });
   });
 
@@ -159,6 +171,8 @@ describe("/admin/meta — o que a página entrega ao navegador", () => {
 });
 
 const NADA_CONFIGURADO: Props = {
+  appIdInicial: null,
+  hostedSignupUrlInicial: null,
   temSegredoSalvo: false,
   temTokenSalvo: false,
   tokenGeradoEm: null,
@@ -190,12 +204,27 @@ describe("/admin/meta — o formulário", () => {
   });
 
   it("configurado: diz que existe e quando nasceu, sem mostrar valor nenhum", () => {
-    render(<FormularioDaMeta {...TUDO_CONFIGURADO} />);
-
-    expect(screen.getByLabelText("Chave secreta do aplicativo").getAttribute("placeholder")).toMatch(
-      /já cadastrada/,
+    render(
+      <FormularioDaMeta
+        {...TUDO_CONFIGURADO}
+        appIdInicial={APP_ID}
+        hostedSignupUrlInicial={HOSTED_SIGNUP_URL}
+      />,
     );
-    expect(screen.getByTestId("meta-token-estado").textContent).toBe("Gerado em 15/09/2026, 10:00.");
+
+    expect((screen.getByLabelText("ID do aplicativo da Meta") as HTMLInputElement).value).toBe(
+      APP_ID,
+    );
+    expect(
+      (screen.getByLabelText("URL do Cadastro Incorporado hospedado pela Meta") as HTMLInputElement)
+        .value,
+    ).toBe(HOSTED_SIGNUP_URL);
+    expect(
+      screen.getByLabelText("Chave secreta do aplicativo").getAttribute("placeholder"),
+    ).toMatch(/já cadastrada/);
+    expect(screen.getByTestId("meta-token-estado").textContent).toBe(
+      "Gerado em 15/09/2026, 10:00.",
+    );
     expect(screen.getByTestId("meta-gerar-token").textContent).toBe("Gerar novo token");
     expect(screen.queryByTestId("meta-token-gerado")).toBeNull();
   });
@@ -229,6 +258,44 @@ describe("/admin/meta — o formulário", () => {
     fetch.mockRestore();
   });
 
+  it("salva App ID e Hosted Signup URL sem pedir o App Secret de novo", async () => {
+    updateMetaApp.mockResolvedValue({ ok: true });
+    render(<FormularioDaMeta {...TUDO_CONFIGURADO} />);
+
+    await userEvent.type(screen.getByLabelText("ID do aplicativo da Meta"), APP_ID);
+    await userEvent.type(
+      screen.getByLabelText("URL do Cadastro Incorporado hospedado pela Meta"),
+      HOSTED_SIGNUP_URL,
+    );
+    await userEvent.click(screen.getByTestId("meta-salvar"));
+
+    await waitFor(() =>
+      expect(updateMetaApp).toHaveBeenCalledWith({
+        app_id: APP_ID,
+        hosted_signup_url: HOSTED_SIGNUP_URL,
+      }),
+    );
+    expect(refresh).toHaveBeenCalled();
+    expect(screen.queryByTestId("meta-token-gerado")).toBeNull();
+  });
+
+  it.each([
+    ["ID do aplicativo da Meta", "123abc", /somente números/i],
+    [
+      "URL do Cadastro Incorporado hospedado pela Meta",
+      "http://meta.example/signup",
+      /URL HTTPS válida/i,
+    ],
+  ])("barra %s inválido antes de chamar a action", async (rotulo, valor, mensagem) => {
+    render(<FormularioDaMeta {...TUDO_CONFIGURADO} />);
+
+    await userEvent.type(screen.getByLabelText(rotulo), valor);
+
+    expect(screen.getByText(mensagem)).toBeTruthy();
+    expect((screen.getByTestId("meta-salvar") as HTMLButtonElement).disabled).toBe(true);
+    expect(updateMetaApp).not.toHaveBeenCalled();
+  });
+
   it("gerar novo token pede confirmação com o efeito, e só então roda", async () => {
     rotacionarVerifyTokenDaMeta.mockResolvedValue({ ok: true, verifyToken: TOKEN_GERADO });
     render(<FormularioDaMeta {...TUDO_CONFIGURADO} />);
@@ -241,17 +308,24 @@ describe("/admin/meta — o formulário", () => {
     await userEvent.click(screen.getByTestId("meta-confirmar-novo-token"));
 
     await waitFor(() => expect(rotacionarVerifyTokenDaMeta).toHaveBeenCalledTimes(1));
-    expect(((await screen.findByTestId("meta-token-gerado")) as HTMLInputElement).value).toBe(TOKEN_GERADO);
+    expect(((await screen.findByTestId("meta-token-gerado")) as HTMLInputElement).value).toBe(
+      TOKEN_GERADO,
+    );
   });
 
   it("recusa da action vira frase para leigo, e nenhum token aparece", async () => {
     updateMetaApp.mockResolvedValue({ ok: false, error: "invalid_input" });
     render(<FormularioDaMeta {...NADA_CONFIGURADO} />);
 
-    await userEvent.type(screen.getByLabelText("Chave secreta do aplicativo"), "0123456789abcdef-x");
+    await userEvent.type(
+      screen.getByLabelText("Chave secreta do aplicativo"),
+      "0123456789abcdef-x",
+    );
     await userEvent.click(screen.getByTestId("meta-salvar"));
 
-    await waitFor(() => expect(toastErro).toHaveBeenCalledWith(expect.stringMatching(/32 caracteres/)));
+    await waitFor(() =>
+      expect(toastErro).toHaveBeenCalledWith(expect.stringMatching(/32 caracteres/)),
+    );
     expect(screen.queryByTestId("meta-token-gerado")).toBeNull();
   });
 });

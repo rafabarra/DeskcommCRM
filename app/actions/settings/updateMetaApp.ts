@@ -13,12 +13,11 @@ import { encryptWebhookSecret } from "@/lib/webhooks/secrets";
 
 export type UpdateMetaAppResult =
   /** `verifyToken` SÓ vem quando o token acabou de ser gerado — é a única vez que ele sai do servidor. */
-  | { ok: true; verifyToken?: string }
-  | { ok: false; error: string; details?: unknown };
+  { ok: true; verifyToken?: string } | { ok: false; error: string; details?: unknown };
 
 /**
- * O app da Meta DESTA INSTALAÇÃO: App Secret gravado pelo dono, verify token
- * gerado pelo SERVIDOR.
+ * O app da Meta DESTA INSTALAÇÃO: App ID e Hosted Signup URL públicos, App
+ * Secret gravado pelo dono e verify token gerado pelo SERVIDOR.
  *
  * ── O defeito que isto fecha ─────────────────────────────────────────────────
  *
@@ -66,6 +65,20 @@ export type UpdateMetaAppResult =
  * `app/api/v1/channels/official/route.ts`.
  */
 const entradaSchema = z.object({
+  app_id: z.string().trim().max(50).regex(/^\d*$/, "app_id deve conter somente dígitos").optional(),
+  hosted_signup_url: z
+    .string()
+    .trim()
+    .max(2_048)
+    .refine((valor) => {
+      if (!valor) return true;
+      try {
+        return new URL(valor).protocol === "https:";
+      } catch {
+        return false;
+      }
+    }, "hosted_signup_url deve ser uma URL HTTPS válida")
+    .optional(),
   /**
    * OPCIONAL de propósito: permite salvar de novo sem redigitar o segredo, que a
    * tela nunca mostra de volta. Vazio significa "mantenha o que está gravado" —
@@ -156,22 +169,41 @@ async function gravar(
  * dizia `app_secret_obrigatorio` — "cadastre a chave" para quem já cadastrou.
  */
 async function oQueEstaGravado(): Promise<
-  { ok: true; temSegredo: boolean; temToken: boolean } | { ok: false; recusa: UpdateMetaAppResult }
+  | {
+      ok: true;
+      temSegredo: boolean;
+      temToken: boolean;
+      appId: string | null;
+      hostedSignupUrl: string | null;
+    }
+  | { ok: false; recusa: UpdateMetaAppResult }
 > {
   const { data, error } = await createAdminClient()
     .from("platform_meta_app")
-    .select("app_secret_encrypted, verify_token_encrypted")
+    .select("app_id, hosted_signup_url, app_secret_encrypted, verify_token_encrypted")
     .eq("id", 1)
     .maybeSingle();
   if (error) {
-    logger.warn("[meta.app] não deu para ler o que está gravado; nada foi alterado", { codigo: error.code });
-    return { ok: false, recusa: { ok: false, error: "leitura_do_app_falhou", details: { codigo: error.code } } };
+    logger.warn("[meta.app] não deu para ler o que está gravado; nada foi alterado", {
+      codigo: error.code,
+    });
+    return {
+      ok: false,
+      recusa: { ok: false, error: "leitura_do_app_falhou", details: { codigo: error.code } },
+    };
   }
-  const linha = data as { app_secret_encrypted?: string | null; verify_token_encrypted?: string | null } | null;
+  const linha = data as {
+    app_id?: string | null;
+    hosted_signup_url?: string | null;
+    app_secret_encrypted?: string | null;
+    verify_token_encrypted?: string | null;
+  } | null;
   return {
     ok: true,
     temSegredo: texto(linha?.app_secret_encrypted) !== "",
     temToken: texto(linha?.verify_token_encrypted) !== "",
+    appId: texto(linha?.app_id) || null,
+    hostedSignupUrl: texto(linha?.hosted_signup_url) || null,
   };
 }
 
@@ -203,10 +235,16 @@ export async function updateMetaApp(input: MetaAppInput): Promise<UpdateMetaAppR
   if (!gravado.ok) return gravado.recusa;
   const { temSegredo, temToken: jaTemToken } = gravado;
   const segredoNovo = parsed.data.app_secret;
+  const appIdMudou =
+    parsed.data.app_id !== undefined && (parsed.data.app_id || null) !== gravado.appId;
+  const hostedSignupUrlMudou =
+    parsed.data.hosted_signup_url !== undefined &&
+    (parsed.data.hosted_signup_url || null) !== gravado.hostedSignupUrl;
+  const configuracaoPublicaMudou = appIdMudou || hostedSignupUrlMudou;
 
-  if (!segredoNovo && !temSegredo) return SEM_SEGREDO;
+  if (!segredoNovo && !temSegredo && !configuracaoPublicaMudou) return SEM_SEGREDO;
 
-  if (!segredoNovo && jaTemToken) {
+  if (!segredoNovo && jaTemToken && !configuracaoPublicaMudou) {
     // Nada a fazer, e dizer isso é melhor que gravar uma trilha de "atualizou"
     // que não atualizou nada.
     return { ok: false, error: "nada_para_salvar" };
@@ -214,6 +252,16 @@ export async function updateMetaApp(input: MetaAppInput): Promise<UpdateMetaAppR
 
   const valores: Record<string, unknown> = { updated_by: authUser.id };
   const campos: string[] = [];
+
+  if (appIdMudou) {
+    valores.app_id = parsed.data.app_id || null;
+    campos.push("app_id");
+  }
+
+  if (hostedSignupUrlMudou) {
+    valores.hosted_signup_url = parsed.data.hosted_signup_url || null;
+    campos.push("hosted_signup_url");
+  }
 
   if (segredoNovo) {
     const cifrado = await encryptWebhookSecret(createAdminClient(), segredoNovo);
@@ -229,7 +277,7 @@ export async function updateMetaApp(input: MetaAppInput): Promise<UpdateMetaAppR
   }
 
   let verifyToken: string | undefined;
-  if (!jaTemToken) {
+  if (!jaTemToken && (temSegredo || Boolean(segredoNovo))) {
     verifyToken = gerarVerifyToken();
     const cifrado = await encryptWebhookSecret(createAdminClient(), verifyToken);
     if (!cifrado) {

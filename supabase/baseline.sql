@@ -41000,3 +41000,20 @@ create trigger trg_cleanup_attendant_channel_binding_member
   execute function public.fn_cleanup_attendant_channel_binding_member();
 
 notify pgrst, 'reload schema';
+
+-- ---- Hosted Embedded Signup no App da Meta da instalação (migration 0563) ----
+--
+-- Configuração pública, aditiva e server-side. O App Secret e o verify token
+-- continuam nas colunas cifradas da 0257; esta fatia não cria callback, troca
+-- code por token, conexão de número nem persistência de business token.
+alter table public.platform_meta_app
+  add column if not exists app_id text,
+  add column if not exists hosted_signup_url text;
+
+comment on column public.platform_meta_app.app_id is
+  'ID público do App da Meta desta instalação. O banco prevalece; META_APP_ID é apenas fallback legado do servidor.';
+
+comment on column public.platform_meta_app.hosted_signup_url is
+  'URL HTTPS pública do Cadastro Incorporado hospedado pela Meta. Configurada pelo platform admin e resolvida do banco; nunca aceita como autoridade direta do browser.';
+
+notify pgrst, 'reload schema';

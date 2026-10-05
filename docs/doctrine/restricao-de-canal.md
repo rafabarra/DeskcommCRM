@@ -198,13 +198,14 @@ ver, tela para mudar, e caminho visível de falha.**
 
 ---
 
-## Embedded Signup não cabe em self-host
+## Embedded Signup centralizado não cabe em self-host
 
 Registrado em 2026-07-30, depois de o dono do repo questionar uma premissa que eu tinha
 copiado sem verificar.
 
-**Embedded Signup é a ferramenta de quem onboarda OUTRAS empresas** — Tech Providers e
-Solution Partners. A documentação da Meta exige, antes de qualquer cliente entrar:
+**Um Embedded Signup centralizado pelo projeto é a ferramenta de quem onboarda OUTRAS
+empresas** — Tech Providers e Solution Partners. A documentação da Meta exige, antes de
+qualquer cliente entrar:
 
 - **App Review com Advanced Access** para cada permissão (`whatsapp_business_management`,
   `whatsapp_business_messaging`);
@@ -218,14 +219,21 @@ Num produto **self-host** isso não fecha, e os dois caminhos possíveis são ru
 | Cada self-hoster vira Tech Provider | App Review e verificação de negócio **por instalação**. Semanas de processo antes do primeiro envio — ninguém instala. |
 | O projeto vira o Tech Provider central | Deixa de ser self-host: o projeto passa a rodar infraestrutura, a estar no caminho dos dados de onboarding e a ter teto de clientes. |
 
-**A arquitetura certa para self-host é BYO**, e não é uma limitação: o self-hoster já vai,
-necessariamente, criar o próprio app na Meta e a própria WABA — sem isso não existe número
-oficial. Colar as credenciais é o passo seguinte natural, não um remendo.
+**A arquitetura certa para self-host continua sendo BYO**, e não é uma limitação: o
+self-hoster cria o próprio app na Meta e a própria WABA — sem isso não existe número oficial.
+O projeto não vira Tech Provider central nem entra no caminho dos tokens de outra instalação.
 
-**O que melhora de verdade** não é substituir BYO por Embedded Signup; é dar superfície ao
-BYO (invariante 6): tela de conexão que valida a credencial na hora (`GET /{phone_number_id}`),
-mostra a URL de webhook e o verify token prontos, e guarda a credencial **por sessão de
-canal, cifrada** — em vez de env global, que hoje limita a instalação a uma WABA só.
+Isso não proíbe a própria instalação de guardar o `app_id` e a URL de Cadastro Incorporado
+hospedada pela Meta para conduzir o onboarding do app BYO dela. Esses valores são configuração
+da instalação em `platform_meta_app`, atrás do platform admin; o banco é a autoridade e
+`META_APP_ID` é apenas fallback legado. Guardá-los não implementa callback OAuth, troca de code
+por token, conexão de número ou persistência de business token — cada uma dessas arestas precisa
+de desenho e prova próprios antes de existir.
+
+**O que melhora de verdade** não é substituir BYO por uma plataforma central; é dar superfície
+ao BYO (invariante 6): configuração do app da instalação, onboarding hospedado quando configurado,
+tela de conexão que valida a credencial na hora (`GET /{phone_number_id}`), mostra a URL de
+webhook e o verify token prontos, e guarda a credencial **por sessão de canal, cifrada**.
 
 **Lição de método:** eu escrevi "Fase 5 = Embedded Signup" em três planos sem perguntar se
 ela cabia no modelo do produto. Vinha do TomikCRM, que é SaaS — lá faz sentido. Premissa

@@ -12,8 +12,9 @@ export const metadata = { title: "API Oficial da Meta da instalação" };
 export const dynamic = "force-dynamic";
 
 /**
- * A tela onde o dono da instalação cadastra o App da Meta — a chave secreta que
- * confere cada entrega do webhook e o token de verificação do handshake.
+ * A tela onde o dono da instalação cadastra o App da Meta — App ID e Hosted
+ * Signup URL públicos, mais a chave secreta que confere cada entrega do webhook
+ * e o token de verificação do handshake.
  *
  * ── O defeito que ela fecha ──────────────────────────────────────────────────
  *
@@ -35,10 +36,10 @@ export const dynamic = "force-dynamic";
  * movido.
  *
  * ⚠️ NENHUM SEGREDO VAI AO CLIENTE — nem cifrado. A leitura abaixo traz as
- * colunas cifradas só para saber SE existem; o que atravessa a fronteira são
- * booleanos e datas. O token em claro sai do servidor numa única resposta: a da
- * server action que acabou de gerá-lo. Não há leitura que o devolva, e esta
- * página não decifra nada. Vigiado em
+ * colunas cifradas só para saber SE existem; o que atravessa a fronteira são os
+ * dois campos públicos, booleanos e datas. O token em claro sai do servidor
+ * numa única resposta: a da server action que acabou de gerá-lo. Não há leitura
+ * que o devolva, e esta página não decifra nada. Vigiado em
  * `tests/unit/app-da-meta-tela-nao-devolve-segredo.test.tsx`.
  */
 export default async function Page() {
@@ -49,18 +50,20 @@ export default async function Page() {
   // anon/authenticated): o admin client é o único caminho.
   const { data, error } = await createAdminClient()
     .from("platform_meta_app")
-    .select("app_secret_encrypted, verify_token_encrypted, verify_token_created_at, updated_at")
+    .select(
+      "app_id, hosted_signup_url, app_secret_encrypted, verify_token_encrypted, verify_token_created_at, updated_at",
+    )
     .eq("id", 1)
     .maybeSingle();
 
-  const linha = data as
-    | {
-        app_secret_encrypted: string | null;
-        verify_token_encrypted: string | null;
-        verify_token_created_at: string | null;
-        updated_at: string | null;
-      }
-    | null;
+  const linha = data as {
+    app_id: string | null;
+    hosted_signup_url: string | null;
+    app_secret_encrypted: string | null;
+    verify_token_encrypted: string | null;
+    verify_token_created_at: string | null;
+    updated_at: string | null;
+  } | null;
 
   // O `.env` é o piso de rollback (`lib/channels/meta/app.ts`). Dizer que ele
   // existe é o que torna a precedência visível: sem isto, quem tem o par no
@@ -69,6 +72,8 @@ export default async function Page() {
 
   return (
     <FormularioDaMeta
+      appIdInicial={linha?.app_id?.trim() || doAmbiente.appId}
+      hostedSignupUrlInicial={linha?.hosted_signup_url?.trim() || null}
       temSegredoSalvo={Boolean(linha?.app_secret_encrypted)}
       temTokenSalvo={Boolean(linha?.verify_token_encrypted)}
       tokenGeradoEm={formatar(linha?.verify_token_created_at ?? null, usuario.idioma)}

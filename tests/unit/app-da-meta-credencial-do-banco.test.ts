@@ -45,7 +45,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const ORIGINAL = { ...process.env };
 
 /** O que o dublê do banco devolve — trocado caso a caso. */
-let linhaDoBanco: { app_secret_encrypted: string | null; verify_token_encrypted: string | null } | null = null;
+let linhaDoBanco: {
+  app_id?: string | null;
+  hosted_signup_url?: string | null;
+  app_secret_encrypted: string | null;
+  verify_token_encrypted: string | null;
+} | null = null;
 let erroDaLeitura: { code: string; message: string } | null = null;
 /** Leitura que ESTOURA (client quebrado, rede caindo) — não é o mesmo que erro devolvido. */
 let estoura: Error | null = null;
@@ -108,6 +113,7 @@ beforeEach(() => {
   decifrado = {};
   delete process.env.META_APP_SECRET;
   delete process.env.META_WEBHOOK_VERIFY_TOKEN;
+  delete process.env.META_APP_ID;
 });
 
 afterEach(() => {
@@ -158,6 +164,8 @@ describe("appDaMeta: banco primeiro, .env como piso", () => {
 
     const { appDaMeta } = await importarComEnv(NO_ENV);
     await expect(appDaMeta()).resolves.toEqual({
+      appId: null,
+      hostedSignupUrl: null,
       appSecret: "segredo-do-env",
       verifyToken: "token-do-env",
     });
@@ -174,7 +182,9 @@ describe("appDaMeta: banco primeiro, .env como piso", () => {
     const { appDaMeta } = await importarComEnv(NO_ENV);
     const app = await appDaMeta();
 
-    expect(app.appSecret, "misturou o segredo do banco com o verify token do .env").toBe("segredo-do-env");
+    expect(app.appSecret, "misturou o segredo do banco com o verify token do .env").toBe(
+      "segredo-do-env",
+    );
     expect(app.verifyToken).toBe("token-do-env");
   });
 
@@ -197,8 +207,63 @@ describe("appDaMeta: banco primeiro, .env como piso", () => {
     // `""` e `null` não são a mesma coisa para quem chama: a rota passa o valor
     // direto para o HMAC e para o handshake, e string vazia é ausente — como em
     // `metaPodeReceber` (`lib/channels/meta/webhook.ts`).
-    const { appDaMeta } = await importarComEnv({ META_APP_SECRET: "   ", META_WEBHOOK_VERIFY_TOKEN: "" });
-    expect(await appDaMeta()).toEqual({ appSecret: null, verifyToken: null });
+    const { appDaMeta } = await importarComEnv({
+      META_APP_SECRET: "   ",
+      META_WEBHOOK_VERIFY_TOKEN: "",
+    });
+    expect(await appDaMeta()).toEqual({
+      appId: null,
+      hostedSignupUrl: null,
+      appSecret: null,
+      verifyToken: null,
+    });
+  });
+});
+
+describe("App ID e Hosted Signup URL", () => {
+  it("devolve App ID e Hosted Signup URL persistidos no banco", async () => {
+    linhaDoBanco = {
+      ...LINHA_CHEIA,
+      app_id: "123456789012345",
+      hosted_signup_url: "https://business.facebook.com/wa/manage/embedded-signup/",
+    };
+    decifrado = { "\\xSEGREDO_CIFRADO": "segredo-do-banco", "\\xTOKEN_CIFRADO": "token-do-banco" };
+
+    const { appDaMeta } = await importarComEnv({ META_APP_ID: "999999999" });
+
+    await expect(appDaMeta()).resolves.toMatchObject({
+      appId: "123456789012345",
+      hostedSignupUrl: "https://business.facebook.com/wa/manage/embedded-signup/",
+    });
+  });
+
+  it("usa META_APP_ID como fallback legado quando o banco não tem App ID", async () => {
+    linhaDoBanco = null;
+
+    const { appDaMeta } = await importarComEnv({ META_APP_ID: "999999999" });
+
+    await expect(appDaMeta()).resolves.toMatchObject({
+      appId: "999999999",
+      hostedSignupUrl: null,
+    });
+  });
+
+  it("o App ID do banco prevalece sobre META_APP_ID sem alterar a origem do par secreto", async () => {
+    linhaDoBanco = {
+      ...LINHA_CHEIA,
+      app_id: "123456789012345",
+      hosted_signup_url: null,
+    };
+    decifrado = { "\\xSEGREDO_CIFRADO": "segredo-do-banco", "\\xTOKEN_CIFRADO": "token-do-banco" };
+
+    const { appDaMeta } = await importarComEnv({ ...NO_ENV, META_APP_ID: "999999999" });
+
+    await expect(appDaMeta()).resolves.toEqual({
+      appId: "123456789012345",
+      hostedSignupUrl: null,
+      appSecret: "segredo-do-banco",
+      verifyToken: "token-do-banco",
+    });
   });
 });
 

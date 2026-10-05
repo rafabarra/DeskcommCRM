@@ -48,6 +48,8 @@ import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 
 /** O que a instalação tem em vigor. Campo nulo = não configurado nessa fonte. */
 export interface AppDaMetaEmVigor {
+  readonly appId: string | null;
+  readonly hostedSignupUrl: string | null;
   readonly appSecret: string | null;
   readonly verifyToken: string | null;
 }
@@ -74,7 +76,13 @@ export function appDaMetaDoAmbiente(
   // decisão de `metaPodeReceber` (`lib/channels/meta/webhook.ts`).
   const appSecret = texto(source.META_APP_SECRET);
   const verifyToken = texto(source.META_WEBHOOK_VERIFY_TOKEN);
-  return { appSecret: appSecret || null, verifyToken: verifyToken || null };
+  const appId = texto(source.META_APP_ID);
+  return {
+    appId: appId || null,
+    hostedSignupUrl: null,
+    appSecret: appSecret || null,
+    verifyToken: verifyToken || null,
+  };
 }
 
 /**
@@ -93,8 +101,8 @@ export function appDaMetaDoAmbiente(
 const TTL_MS = 30_000;
 
 declare global {
-  // eslint-disable-next-line no-var
-  var __memoDoAppDaMeta: { readonly valor: AppDaMetaEmVigor; readonly expiraEm: number } | null | undefined;
+  var __memoDoAppDaMeta:
+    { readonly valor: AppDaMetaEmVigor; readonly expiraEm: number } | null | undefined;
 }
 
 /** Chamada por quem ESCREVE a credencial — a server action do /admin. */
@@ -103,6 +111,8 @@ export function invalidarAppDaMeta(): void {
 }
 
 interface LinhaDoApp {
+  app_id: string | null;
+  hosted_signup_url: string | null;
   app_secret_encrypted: string | null;
   verify_token_encrypted: string | null;
 }
@@ -112,7 +122,7 @@ async function linhaDoBanco(): Promise<LinhaDoApp | null> {
   try {
     const { data, error } = await createAdminClient()
       .from("platform_meta_app")
-      .select("app_secret_encrypted, verify_token_encrypted")
+      .select("app_id, hosted_signup_url, app_secret_encrypted, verify_token_encrypted")
       .eq("id", 1)
       .maybeSingle();
     // Clone que ainda não aplicou a 0257 devolve 42P01 aqui. Isso NÃO é erro
@@ -138,7 +148,9 @@ async function linhaDoBanco(): Promise<LinhaDoApp | null> {
  * segredo e sem o token o webhook nunca é aceito. Nos dois casos o desfecho
  * certo é o piso (o `.env` inteiro), não um par remendado.
  */
-async function parDoBanco(linha: LinhaDoApp | null): Promise<AppDaMetaEmVigor | null> {
+async function parSecretoDoBanco(
+  linha: LinhaDoApp | null,
+): Promise<Pick<AppDaMetaEmVigor, "appSecret" | "verifyToken"> | null> {
   const segredoCifrado = texto(linha?.app_secret_encrypted);
   const tokenCifrado = texto(linha?.verify_token_encrypted);
   if (!segredoCifrado || !tokenCifrado) return null;
@@ -166,7 +178,17 @@ export async function appDaMeta(): Promise<AppDaMetaEmVigor> {
   const memo = globalThis.__memoDoAppDaMeta;
   if (memo && memo.expiraEm > Date.now()) return memo.valor;
 
-  const valor = (await parDoBanco(await linhaDoBanco())) ?? appDaMetaDoAmbiente();
+  const doAmbiente = appDaMetaDoAmbiente();
+  const linha = await linhaDoBanco();
+  const parSecreto = (await parSecretoDoBanco(linha)) ?? {
+    appSecret: doAmbiente.appSecret,
+    verifyToken: doAmbiente.verifyToken,
+  };
+  const valor: AppDaMetaEmVigor = {
+    appId: texto(linha?.app_id) || doAmbiente.appId,
+    hostedSignupUrl: texto(linha?.hosted_signup_url) || null,
+    ...parSecreto,
+  };
   globalThis.__memoDoAppDaMeta = { valor, expiraEm: Date.now() + TTL_MS };
   return valor;
 }

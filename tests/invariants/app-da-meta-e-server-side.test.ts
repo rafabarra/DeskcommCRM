@@ -61,7 +61,10 @@ function erroSob(papel: string, comando: string): string | null {
  */
 function esperaBarrado(papel: string, comando: string): void {
   const erro = erroSob(papel, comando);
-  expect(erro, `\`${papel}\` executou "${comando}" SEM erro — a tabela está exposta`).not.toBeNull();
+  expect(
+    erro,
+    `\`${papel}\` executou "${comando}" SEM erro — a tabela está exposta`,
+  ).not.toBeNull();
   expect(erro).toContain("permission denied");
 }
 
@@ -130,10 +133,7 @@ describe("o PostgREST não serve o app da Meta da instalação", () => {
   });
 
   it("`authenticated` é BARRADO ao escrever", () => {
-    esperaBarrado(
-      "authenticated",
-      `insert into public.${TABELA} (id) values (1)`,
-    );
+    esperaBarrado("authenticated", `insert into public.${TABELA} (id) values (1)`);
   });
 
   it("a RLS está LIGADA — o segundo degrau, para o dia em que o grant voltar", () => {
@@ -158,6 +158,21 @@ describe("o PostgREST não serve o app da Meta da instalação", () => {
 });
 
 describe("os dois segredos são gravados cifrados, e voltam pela decifra", () => {
+  it("App ID e Hosted Signup URL são campos públicos opcionais do singleton existente", () => {
+    const colunas = sql(`
+      select column_name || ':' || data_type || ':' || is_nullable
+        from information_schema.columns
+       where table_schema = 'public'
+         and table_name = '${TABELA}'
+         and column_name in ('app_id', 'hosted_signup_url')
+       order by column_name;
+    `)
+      .trim()
+      .split("\n");
+
+    expect(colunas).toEqual(["app_id:text:YES", "hosted_signup_url:text:YES"]);
+  });
+
   it("as colunas são bytea e o que se grava NÃO se lê em claro", () => {
     // A propriedade que a tela promete quando diz que o verify token aparece
     // UMA vez. Sem este caso, gravar em texto puro passaria por todos os outros
@@ -180,9 +195,10 @@ describe("os dois segredos são gravados cifrados, e voltam pela decifra", () =>
       `select encode(app_secret_encrypted, 'escape') || '\\n' || encode(verify_token_encrypted, 'escape')
          from public.${TABELA} where id = 1;`,
     );
-    expect(cru.includes(segredo), "o App Secret está legível na coluna — fn_encrypt_oauth não foi aplicada").toBe(
-      false,
-    );
+    expect(
+      cru.includes(segredo),
+      "o App Secret está legível na coluna — fn_encrypt_oauth não foi aplicada",
+    ).toBe(false);
     expect(
       cru.includes(token),
       "o verify token está legível na coluna — quem lê a tabela copia a credencial do webhook",
@@ -193,7 +209,9 @@ describe("os dois segredos são gravados cifrados, e voltam pela decifra", () =>
               public.fn_decrypt_oauth(verify_token_encrypted)
          from public.${TABELA} where id = 1;`,
     ).trim();
-    expect(decifrado, "a decifra não devolveu o que foi gravado — o par não fecha").toBe(`${segredo}|${token}`);
+    expect(decifrado, "a decifra não devolveu o que foi gravado — o par não fecha").toBe(
+      `${segredo}|${token}`,
+    );
   });
 
   it("o singleton é singleton — não dá para ter dois apps da Meta na mesma instalação", () => {
@@ -208,6 +226,9 @@ describe("os dois segredos são gravados cifrados, e voltam pela decifra", () =>
         return motivoDoErro(err);
       }
     })();
-    expect(erro, "aceitou uma segunda linha: o CHECK do singleton não está no baseline").not.toBeNull();
+    expect(
+      erro,
+      "aceitou uma segunda linha: o CHECK do singleton não está no baseline",
+    ).not.toBeNull();
   });
 });
