@@ -23,6 +23,7 @@
     { "id": "webhook", "lane": "servidor", "col": 5, "type": "route", "label": "GET|POST /api/v1/webhooks/meta/[token]" },
     { "id": "meta", "lane": "externo", "col": 5, "type": "external", "label": "Painel e entregas da Meta" },
     { "id": "conexoes", "lane": "operador", "col": 4, "type": "frontend", "label": "Conexões › API Oficial (Meta) + aviso do primeiro acesso" },
+    { "id": "probe", "lane": "servidor", "col": 4, "type": "route", "label": "GET /api/v1/channels/official/embedded-signup/probe — read-only; sem troca/persistência" },
     { "id": "audit", "lane": "banco", "col": 2, "type": "database", "label": "api_audit_log / platform_meta_app.updated | verify_token_rotated" },
     { "id": "auditTela", "lane": "operador", "col": 2, "type": "frontend", "label": "/admin/audit" }
   ],
@@ -38,6 +39,8 @@
     { "id": "e9", "from": "meta", "to": "webhook", "label": "verify token + entregas assinadas" },
     { "id": "e10", "from": "resolvedor", "to": "conexoes", "label": "origem do token; valor só se vier do .env" },
     { "id": "e11", "from": "conexoes", "to": "telaAdmin", "label": "link para quem administra a instalação" },
-    { "id": "e12", "from": "telaAdmin", "to": "meta", "label": "operador cola o token no painel" }
+    { "id": "e12", "from": "telaAdmin", "to": "meta", "label": "operador cola o token no painel" },
+    { "id": "e13", "from": "meta", "to": "probe", "label": "redirect cross-site; valores não são refletidos" },
+    { "id": "e14", "from": "probe", "to": "telaAdmin", "label": "página segura volta para /admin/meta" }
   ]
 }

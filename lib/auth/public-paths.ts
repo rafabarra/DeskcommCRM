@@ -72,6 +72,12 @@ export const PUBLIC_PATHS: RegExp[] = [
   // volta do Google não tem, e não pode ter, o cookie.
   /^\/api\/v1\/plataformas-de-anuncio\/google\/callback$/,
   /^\/api\/v1\/integrations\/nuvemshop\/callback$/,
+  // PROBE TEMPORÁRIA do retorno do Hosted Embedded Signup. A Meta devolve o
+  // navegador numa navegação cross-site, portanto o cookie de sessão Strict
+  // não viaja. A rota é deliberadamente inerte: não autentica identidade, não
+  // troca `code`, não grava e só descreve a FORMA segura da query. Âncora `$`
+  // impede que futuros sub-paths herdem esta exceção do proxy.
+  /^\/api\/v1\/channels\/official\/embedded-signup\/probe$/,
   /^\/api\/internal\//,
   /^\/api\/mcp(\/.*)?$/,
   // GET /api/v1/contacts aceita SESSÃO ou Bearer `dsk_...` (api_tokens) — a
