@@ -75,6 +75,13 @@ interface Excecao {
  * linhas da OUTRA organização, não uma leitura como superusuário.
  */
 const PROVA_PROPRIA: readonly Excecao[] = [
+  {
+    tabela: "oauth_signup_nonces",
+    razao:
+      "tests/invariants/oauth-signup-nonces.test.ts — tabela server-only: anon e " +
+      "authenticated são recusados por ACL, RLS fica ligada sem policy, e o consumo " +
+      "condicional exige hash + fluxo + organização + usuário + sessão + prazo.",
+  },
   { tabela: "golden_candidates", razao: "tests/invariants/golden-candidates.test.ts — dois tenants reais por JWT (agent): leitura positiva local e ZERO do vizinho nos dois sentidos, a tabela inteira sem filtro igual à própria, anon recusado, e insert/update/delete de authenticated sem efeito (só o servidor grava)." },
   { tabela: "jev_observacoes", razao: "tests/invariants/jev-observacoes.test.ts — dois tenants reais por JWT (agent): leitura positiva local e ZERO do vizinho nos dois sentidos, a tabela inteira sem filtro igual à própria, anon recusado, e insert/update/delete de authenticated sem efeito (só o servidor grava)." },
   { tabela: "prospecting_settings", razao: "tests/invariants/prospecting.test.ts — tabela exclusiva do servidor, ACL e RLS verificadas; FK composta e comandos autenticados cercam a organização." },

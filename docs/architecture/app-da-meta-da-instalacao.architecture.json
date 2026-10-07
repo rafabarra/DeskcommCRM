@@ -24,6 +24,10 @@
     { "id": "meta", "lane": "externo", "col": 5, "type": "external", "label": "Painel e entregas da Meta" },
     { "id": "conexoes", "lane": "operador", "col": 4, "type": "frontend", "label": "Conexões › API Oficial (Meta) + aviso do primeiro acesso" },
     { "id": "probe", "lane": "servidor", "col": 4, "type": "route", "label": "GET /api/v1/channels/official/embedded-signup/probe — read-only; sem troca/persistência" },
+    { "id": "adminTenant", "lane": "operador", "col": 3, "type": "actor", "label": "Admin da organização autenticado" },
+    { "id": "inicioSignup", "lane": "servidor", "col": 4, "type": "route", "label": "GET /api/v1/channels/official/embedded-signup/start — support-write + admin; state/cookie de 10 min" },
+    { "id": "noncesSignup", "lane": "banco", "col": 5, "type": "database", "label": "oauth_signup_nonces — hash + org + usuário + sessão + expiração/consumo" },
+    { "id": "signupHospedado", "lane": "externo", "col": 5, "type": "external", "label": "Hosted Embedded Signup — URL server-side intacta" },
     { "id": "audit", "lane": "banco", "col": 2, "type": "database", "label": "api_audit_log / platform_meta_app.updated | verify_token_rotated" },
     { "id": "auditTela", "lane": "operador", "col": 2, "type": "frontend", "label": "/admin/audit" }
   ],
@@ -41,6 +45,12 @@
     { "id": "e11", "from": "conexoes", "to": "telaAdmin", "label": "link para quem administra a instalação" },
     { "id": "e12", "from": "telaAdmin", "to": "meta", "label": "operador cola o token no painel" },
     { "id": "e13", "from": "meta", "to": "probe", "label": "redirect cross-site; valores não são refletidos" },
-    { "id": "e14", "from": "probe", "to": "telaAdmin", "label": "página segura volta para /admin/meta" }
+    { "id": "e14", "from": "probe", "to": "telaAdmin", "label": "página segura volta para /admin/meta" },
+    { "id": "e15", "from": "adminTenant", "to": "inicioSignup", "label": "requisição autenticada; query não fornece identidade" },
+    { "id": "e16", "from": "inicioSignup", "to": "resolvedor", "label": "App ID + Hosted URL do servidor" },
+    { "id": "e17", "from": "inicioSignup", "to": "noncesSignup", "label": "cria vínculo expirável; callback futuro consome uma vez" },
+    { "id": "e18", "from": "inicioSignup", "to": "signupHospedado", "label": "307 sem anexar state nem parâmetros do browser" },
+    { "id": "e19", "from": "inicioSignup", "to": "audit", "label": "channel.embedded_signup_started" },
+    { "id": "e20", "from": "signupHospedado", "to": "probe", "label": "retorno temporário, ainda inerte" }
   ]
 }

@@ -228,6 +228,7 @@ export const AUDIT_ACTIONS = [
   "ai_agent.run_completed",
   "ai_agent.run_failed",
   "channel.connected",
+  "channel.embedded_signup_started",
   "prospecting.changed",
   // A ABORDAGEM que SAIU (PR #963). Distinta de `prospecting.changed`, que é
   // configuração: esta é a única linha do produto que fala primeiro com quem
